@@ -76,6 +76,11 @@ body.ro #view .btn.primary, body.ro #view .btn.danger, body.ro #view label.btn.p
 .ro-tag{display:none}
 body.ro .ro-tag{display:inline-flex;align-items:center;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--warn);background:var(--warn-soft);border-radius:999px;padding:3px 10px;white-space:nowrap}
 .perm-t td,.perm-t th{padding:7px 10px}
+.pw-wrap{position:relative;display:block}
+.pw-wrap input{padding-right:46px!important}
+.pw-eye{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:38px;height:34px;border:0;background:transparent;color:var(--muted);border-radius:8px;cursor:pointer;display:grid;place-items:center}
+.pw-eye:hover{color:var(--ink);background:var(--surface-2)}
+.pw-eye svg{width:20px;height:20px}
 @media (max-width:700px){.topbar .sync{display:none} body.ro .ro-tag{font-size:10px;padding:2px 7px} .usr{padding-left:9px} #usrName{max-width:90px;overflow:hidden;text-overflow:ellipsis}}
 @media (max-width:480px){#usrName{display:none} .usr{padding:3px} body.ro .ro-tag{font-size:0;padding:0;width:10px;height:10px;background:var(--warn)}}
 .perm-t .seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
@@ -2781,6 +2786,17 @@ CHG.importar=el=>{ const f=el.files[0]; if(!f) return; const r=new FileReader();
 $('#btnRestore').addEventListener('click',()=>{ try{ const res=aplicarBackup(EMB); LS.set('backupAplicado',EMB.exportadoEm); $('#restoreBanner').hidden=true; render(); toast(`Backup carregado: ${res.novos} novos, ${res.atual} atualizados`); }catch(e){ toast('Não foi possível ler o backup deste arquivo.'); } });
 $('#btnRestoreNo').addEventListener('click',()=>{ LS.set('backupAplicado',EMB.exportadoEm); $('#restoreBanner').hidden=true; });
 
+/* ---------- Mostrar / ocultar senha ---------- */
+const OLHO='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const OLHO_X='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.1M6.6 6.6C3.9 8.3 2 12 2 12s3.6 7 10 7a10.4 10.4 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+function olhosSenha(root){ (root||document).querySelectorAll('input[type=password]:not([data-olho])').forEach(inp=>{ inp.dataset.olho='1';
+  const w=document.createElement('span'); w.className='pw-wrap'; inp.parentNode.insertBefore(w,inp); w.appendChild(inp);
+  const b=document.createElement('button'); b.type='button'; b.className='pw-eye'; b.innerHTML=OLHO; b.setAttribute('aria-label','Mostrar senha'); b.title='Mostrar senha';
+  b.addEventListener('click',e=>{ e.preventDefault(); const ver=inp.type==='password'; inp.type=ver?'text':'password'; b.innerHTML=ver?OLHO_X:OLHO; const t=ver?'Ocultar senha':'Mostrar senha'; b.setAttribute('aria-label',t); b.title=t; inp.focus(); });
+  w.appendChild(b); }); }
+new MutationObserver(()=>olhosSenha()).observe(document.body,{childList:true,subtree:true});
+olhosSenha();
+
 /* ---------- Login e início (Firebase Authentication) ---------- */
 let MODO_SETUP=false;
 function msgLock(t){ $('#lockErr').textContent=t||''; }
@@ -2822,7 +2838,7 @@ $('#lockForm').addEventListener('submit',async e=>{ e.preventDefault(); const F=
   btn.disabled=true; msgLock(MODO_SETUP?'Criando…':'Conferindo…');
   try{ if(MODO_SETUP){ const nome=$('#lockNome').value.trim(); if(!nome){ msgLock('Informe o seu nome.'); return; } if(senha.length<6){ msgLock('Use pelo menos 6 caracteres na senha.'); return; } if(senha!==$('#lockPass2').value){ msgLock('A confirmação não confere com a senha.'); return; }
       await criarAdministrador(F, nome, email, senha); }
-    else { await F.fn.signInWithEmailAndPassword(F.auth, email, senha); msgLock(''); $('#lockPass').value=''; } }
+    else { await F.fn.signInWithEmailAndPassword(F.auth, email, senha); msgLock(''); $('#lockPass').value=''; $('#lockPass').type='password'; } }
   catch(err){ msgLock(ERR_LOGIN[err&&err.code] || (err&&err.code==='permission-denied'?'O sistema já tem administrador. Peça a ele para criar o seu usuário.':'Não foi possível entrar ('+((err&&err.code)||'erro')+').')); }
   finally{ btn.disabled=false; } });
 $('#lockReset').addEventListener('click',()=>{ const F=window.FB, email=$('#lockUser').value.trim(); if(!email){ msgLock('Digite o seu e-mail acima e toque de novo em "Esqueci minha senha".'); $('#lockUser').focus(); return; }
