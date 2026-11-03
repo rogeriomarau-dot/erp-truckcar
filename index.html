@@ -1280,7 +1280,7 @@ function dreLinhas(ano, reg){ const caixa=reg==='caixa';
   const rec=st('receita'), perdas=st('perdas'), recOp=add(rec,perdas,-1);
   L.push({label:'Dias trabalhados',vals:dias,cls:'info',edit:'dias',int:true});
   L.push({label:'Faturamento médio por dia',vals:recOp.map((v,i)=>dias[i]?v/dias[i]:0),cls:'info',semTotal:true});
-  L.push({label:'(+) RECEITAS OPERACIONAIS',vals:recOp,cls:'tot',dr:S_('receita','perdas')});
+  L.push({label:'(+) RECEITAS OPERACIONAIS',vals:rec,cls:'tot',dr:S_('receita')});
   const gRec=gruposDe('receita'); if(gRec.length===1){ gRec[0].contas.forEach(c=>{ const cv=V[c.id]||Z(); if(c.ativo===false && !cv.some(Boolean)) return; L.push({label:c.nome,vals:cv,cls:'grp',dr:{contas:[c.id]}}); }); } else sec('receita');
   L.push({label:'(-) Perdas de produtos (validade/outros)',vals:perdas,cls:'grp',gid:'_perdas',dr:S_('perdas')});
   L.push({label:'(=) RECEITA BRUTA',vals:recOp,cls:'res',dr:S_('receita','perdas')});
@@ -1300,7 +1300,7 @@ function dreLinhas(ano, reg){ const caixa=reg==='caixa';
   const dist=st('distrib'); L.push({label:'(-) DISTRIBUIÇÃO DOS RESULTADOS',vals:dist,cls:'tot',dr:S_('distrib')}); sec('distrib');
   const ll=add(rnl,dist,-1); L.push({label:'(=) LUCRO LÍQUIDO DO EXERCÍCIO APÓS A DISTR. LUCROS',vals:ll,cls:'res',dr:S_('receita','perdas','deducoes','csv','desp_op','fin_rec','fin_desp','ir','nao_op','distrib')});
   const prov=st('prov'); L.push({label:'TOTAL DAS PROVISÕES',vals:prov,cls:'tot',dr:S_('prov')}); sec('prov');
-  return {L, base:recOp, painel:{rec:add(recOp,fr), ll:rnl}};
+  return {L, base:rec, painel:{rec:add(recOp,fr), ll:rnl}};
 }
 function itensDRE(dr, ano, m0, m1, reg){
   const ids=dr.contas?new Set(dr.contas):null, secs=dr.secoes?new Set(dr.secoes):null, out=[];
