@@ -427,6 +427,7 @@ table.dre td.dr:focus-visible{outline:2px solid var(--accent)}
         <button data-go="receber">Contas a receber</button>
         <button data-go="fluxo">Fluxo de caixa</button>
         <button data-go="pe">Ponto de equilíbrio</button>
+        <button data-go="fixvar">Despesas fixas × variáveis</button>
         <button data-go="custeio">Custeio por setor</button>
         <button data-go="dre">DRE</button>
       </nav>
@@ -701,7 +702,7 @@ function csv(linhas){ return '﻿'+linhas.map(r=>r.map(v=>{ v=typeof v==='number
 
 /* ---------- Usuários e permissões ---------- */
 const MODS=[['painel','Dashboard',['painel'],'Geral'],['orcamentos','Orçamentos',['orcamentos'],'Comercial'],
-  ['pagar','Contas a pagar',['pagar'],'Financeiro'],['receber','Contas a receber',['receber'],'Financeiro'],['fluxo','Fluxo de caixa',['fluxo'],'Financeiro'],['pe','Ponto de equilíbrio',['pe'],'Financeiro'],['custeio','Custeio por setor',['custeio'],'Financeiro'],['dre','DRE',['dre'],'Financeiro'],
+  ['pagar','Contas a pagar',['pagar'],'Financeiro'],['receber','Contas a receber',['receber'],'Financeiro'],['fluxo','Fluxo de caixa',['fluxo'],'Financeiro'],['pe','Ponto de equilíbrio e fixas × variáveis',['pe','fixvar'],'Financeiro'],['custeio','Custeio por setor',['custeio'],'Financeiro'],['dre','DRE',['dre'],'Financeiro'],
   ['rel_pagar','Contas a pagar',['rel_pagar','rel_itens','rel_categoria','rel_fornecedor'],'Relatórios'],['rel_receber','Contas a receber',['rel_receber'],'Relatórios'],['rel_formas','Formas de recebimento',['rel_formas'],'Relatórios'],
   ['fornecedores','Fornecedores',['fornecedores'],'Cadastros'],['clientes','Clientes',['clientes'],'Cadastros'],['insumos','Insumos (itens)',['insumos'],'Cadastros'],['bancos','Contas bancárias',['bancos'],'Cadastros'],
   ['formas','Formas de pagamento/recebimento',['formas'],'Cadastros'],['plano','Plano de contas e categorias',['cat_insumos','cat_op','cat_nop','plano'],'Cadastros'],
@@ -739,7 +740,7 @@ function sairSistema(msg){ try{ if(msg) sessionStorage.setItem('truckcar.erp.msg
 const VIEWS={
   painel:{t:'Dashboard',r:vPainel}, orcamentos:{t:'Orçamentos',r:vOrcModulo}, pagar:{t:'Contas a pagar',r:()=>vLanc('P')}, receber:{t:'Contas a receber',r:()=>vLanc('R')},
   fluxo:{t:'Fluxo de caixa',r:vFluxo}, dre:{t:'DRE',r:vDRE}, insumos:{t:'Insumos',r:vInsumos}, rel_itens:{t:'Compras por item',r:vRelItens},
-  rel_categoria:{t:'Compras por categoria',r:vRelCategoria}, rel_pagar:{t:'Relatório de contas a pagar',r:()=>vRelLanc('P')}, rel_receber:{t:'Relatório de contas a receber',r:()=>vRelLanc('R')}, rel_fornecedor:{t:'Compras por fornecedor',r:vRelFornecedor}, rel_formas:{t:'Formas de recebimento',r:vRelFormas}, pe:{t:'Ponto de equilíbrio',r:vPE}, custeio:{t:'Custeio por setor',r:vCusteio},
+  rel_categoria:{t:'Compras por categoria',r:vRelCategoria}, fixvar:{t:'Despesas fixas × variáveis',r:vFixVar}, rel_pagar:{t:'Relatório de contas a pagar',r:()=>vRelLanc('P')}, rel_receber:{t:'Relatório de contas a receber',r:()=>vRelLanc('R')}, rel_fornecedor:{t:'Compras por fornecedor',r:vRelFornecedor}, rel_formas:{t:'Formas de recebimento',r:vRelFormas}, pe:{t:'Ponto de equilíbrio',r:vPE}, custeio:{t:'Custeio por setor',r:vCusteio},
   fornecedores:{t:'Fornecedores',r:()=>vPessoas('fornecedores')}, clientes:{t:'Clientes',r:()=>vPessoas('clientes')}, bancos:{t:'Contas bancárias',r:vBancos}, formas:{t:'Formas de pagamento/recebimento',r:vFormas},
   cat_insumos:{t:'Categorias de insumos',r:()=>vPlano('insumos')}, cat_op:{t:'Despesas operacionais',r:()=>vPlano('op')}, cat_nop:{t:'Despesas não operacionais',r:()=>vPlano('nop')}, plano:{t:'Plano de contas',r:()=>vPlano('todos')},
   config:{t:'Configurações',r:vConfig}, usuarios:{t:'Usuários e permissões',r:vUsuarios}
@@ -1261,6 +1262,84 @@ function abrirDetalhe(titulo, itens, sub){
   abrirModal(titulo, corpo, `<span></span><button class="btn" data-m="fechar">Fechar</button>`, { abrir:b=>{ const l=S.lancamentos.find(x=>x.id===b.dataset.id); if(l) formLanc(l.tipo,l); } });
   $('#sheet').classList.add('lg');
 }
+
+/* ======================= DESPESAS FIXAS × VARIÁVEIS ======================= */
+F.fvAno=new Date().getFullYear(); F.fvAV=true; F.fvAH=true; F.fvExp={}; F.fvTudo=false; F.fvP=novoPer(); F.fvReg='caixa'; let FV_CACHE=null;
+function fvLinhas(ano, reg){
+  const V=valoresPorConta(ano, reg), T=tratPE(), Z=()=>Array(12).fill(0), add=(a,b,k=1)=>a.map((x,i)=>x+k*b[i]);
+  const rec=gruposDe('receita').reduce((a,g)=>g.contas.reduce((b,c)=>add(b,V[c.id]||Z()),a),Z());
+  const grupos={V:{}, F:{}}, fora=[];
+  ORDEM.filter(sc=>SECOES[sc].nat==='P' && sc!=='distrib' && sc!=='prov').forEach(sc=>gruposDe(sc).forEach(g=>g.contas.forEach(c=>{ const v=V[c.id]; if(!v || !v.some(Boolean)) return; const k=classeDe(c,g);
+    const item={id:c.id, nome:g.nome+' › '+c.nome, vals:v};
+    if(!k){ fora.push(item); return; } const lado=T[k]==='V'?'V':'F'; (grupos[lado][k]=grupos[lado][k]||[]).push(item); })));
+  const aj=k=>Array.from({length:12},(_,i)=>parseNum((S.ajustes[ano+'-'+pad(i+1)]||{})[k]));
+  const L=[];
+  L.push({label:'(+) RECEITAS', vals:rec, cls:'tot', dr:{secoes:['receita']}});
+  const bloco=(lado, titulo, extra)=>{ const ks=Object.keys(grupos[lado]); let tot=Z(); const ids=[];
+    ks.forEach(k=>grupos[lado][k].forEach(it=>{ tot=add(tot,it.vals); ids.push(it.id); })); if(extra) tot=add(tot,extra.vals);
+    L.push({label:titulo, vals:tot, cls:'tot', dr:ids.length?{contas:ids}:null});
+    ks.forEach(k=>{ const its=grupos[lado][k]; const gid='fv_'+lado+'_'+k; L.push({label:CLASSES[k], vals:its.reduce((a,it)=>add(a,it.vals),Z()), cls:'grp', gid, dr:{contas:its.map(it=>it.id)}});
+      its.forEach(it=>L.push({label:it.nome, vals:it.vals, cls:'acc', pai:gid, dr:{contas:[it.id]}})); });
+    if(extra && extra.vals.some(Boolean)) L.push({label:extra.label, vals:extra.vals, cls:'grp'});
+    return tot; };
+  const est= reg==='caixa'? null : {label:'Variação de estoque (estoque inicial − final, do DRE)', vals:aj('ei').map((v,i)=>v-aj('ef')[i])};
+  const cv=bloco('V','(−) DESPESAS VARIÁVEIS', est);
+  const mc=add(rec,cv,-1); L.push({label:'(=) MARGEM DE CONTRIBUIÇÃO', vals:mc, cls:'res'});
+  const cf=bloco('F','(−) DESPESAS FIXAS');
+  L.push({label:'(=) RESULTADO (margem − fixas)', vals:add(mc,cf,-1), cls:'res'});
+  if(fora.length){ const gid='fv_fora'; L.push({label:'Não classificadas (fora da análise)', vals:fora.reduce((a,it)=>add(a,it.vals),Z()), cls:'grp', gid, dr:{contas:fora.map(it=>it.id)}});
+    fora.forEach(it=>L.push({label:it.nome, vals:it.vals, cls:'acc', pai:gid, dr:{contas:[it.id]}})); }
+  return {L, base:rec};
+}
+function vFixVar(){
+  const ano=F.fvAno, reg=F.fvReg, caixa=reg==='caixa', {L,base}=fvLinhas(ano,reg); const [m0,m1]=faixa(F.fvP); const MS=[]; for(let i=m0;i<=m1;i++) MS.push(i);
+  FV_CACHE={L,ano,m0,m1};
+  const soma=a=>MS.reduce((s,i)=>s+a[i],0);
+  const mesesCom=MS.filter(i=>ativos().some(l=>{ const mv_=movDRE(l,reg); return mv_ && mv_.data.startsWith(ano+'-'+pad(i+1)); }));
+  const nMed=Math.max(1,mesesCom.length), varios=MS.length>1; const totBase=soma(base);
+  const aberto=gid=>F.fvTudo || F.fvExp[gid];
+  const cols=MS.map(i=>`<th>${MES3[i]}</th>${F.fvAV?'<th>AV%</th>':''}${F.fvAH?'<th>AH%</th>':''}`).join('');
+  const dCel=(r,idx,m,v,neg)=> (r.dr && v)? `<td class="v dr ${neg?'neg':''}" data-act="fvDrill" data-i="${idx}" data-m="${m}" title="Ver lançamentos">${fmoney(v)}</td>` : `<td class="v ${neg?'neg':''}">${v?fmoney(v):'–'}</td>`;
+  const linhas=L.map((r,idx)=>{
+    if(r.cls==='acc' && !aberto(r.pai)) return '';
+    const temFilhos=r.cls==='grp' && r.gid && r.gid!=='_perdas';
+    const lbl=temFilhos?`<button class="tg" data-act="fvTg" data-g="${r.gid}" aria-expanded="${!!aberto(r.gid)}">${esc(r.label)}</button>`:esc(r.label);
+    const tot=soma(r.vals);
+    const cel=MS.map(i=>{ const v=r.vals[i]; let c;
+      if(r.edit){ c=`<td class="v"><input class="n" aria-label="${esc(r.label)} ${MESES[i]}" value="${v?(r.int?v:fmoney(v)):''}" data-chg="dreAj" data-k="${r.edit}" data-m="${i+1}" inputmode="decimal"></td>`; }
+      else c=dCel(r,idx,i,v,v<0);
+      if(F.fvAV) c+=`<td class="p">${r.cls==='info'||!base[i]||!v?'':pct(v/base[i])}</td>`;
+      if(F.fvAH) c+=`<td class="p">${i>0&&r.vals[i-1]&&v&&r.cls!=='info'?pct(v/r.vals[i-1]-1):''}</td>`;
+      return c; }).join('');
+    let totCel='';
+    if(varios){
+      const sd=soma(L[0].vals);
+      totCel = r.semTotal? `<td class="v">${totBase&&sd?fmoney(totBase/sd):'–'}</td><td class="p"></td><td class="v"></td>`
+        : r.edit==='ei'? `<td class="v">${fmoney(r.vals[m0])}</td><td class="p"></td><td class="v"></td>`
+        : r.edit==='ef'? `<td class="v">${fmoney(r.vals[m1])}</td><td class="p"></td><td class="v"></td>`
+        : r.edit==='dias'? `<td class="v">${tot||'–'}</td><td class="p"></td><td class="v"></td>`
+        : `${dCel(r,idx,'T',tot,tot<0)}<td class="p">${r.cls!=='info'&&totBase&&tot?pct(tot/totBase):''}</td><td class="v">${tot?fmoney(tot/nMed):''}</td>`;
+    }
+    return `<tr class="${r.cls}"><td>${lbl}</td>${cel}${totCel}</tr>`;
+  }).join('');
+  const semDados=!ativos().some(l=>{ const mv_=movDRE(l,reg); return mv_ && mv_.data.startsWith(ano+'-'); });
+  return `
+  <div class="bar"><div class="row">${anoSelect('fvAno',ano,'fvAno')}<div class="f"><label>Regime</label><div class="chips" role="group" aria-label="Regime"><button type="button" data-act="fvReg" data-v="comp" aria-pressed="${!caixa}">Competência</button><button type="button" data-act="fvReg" data-v="caixa" aria-pressed="${caixa}">Caixa</button></div></div>${periodoUI('fvP')}</div>
+    <div class="row"><button class="btn" data-act="fvTudo">${F.fvTudo?'Recolher contas':'Abrir todas as contas'}</button></div>${botoesExp('fixvar')}</div>
+  <div class="row"><label class="check"><input type="checkbox" data-chg="fvAV" ${F.fvAV?'checked':''}> AV% (sobre a receita)</label>
+    <label class="check"><input type="checkbox" data-chg="fvAH" ${F.fvAH?'checked':''}> AH% (mês a mês)</label></div>
+  ${semDados?`<div class="warnbox">${caixa?`Ainda não há pagamentos ou recebimentos baixados em ${ano}.`:`Ainda não há lançamentos com competência em ${ano}.`}</div>`:''}
+  <div class="card" style="padding:0"><div class="tscroll" style="max-height:72vh;overflow:auto"><table class="dre"><thead><tr><th>Fixas × variáveis ${caixa?'(caixa)':'(competência)'} · ${esc(rotuloPer(F.fvP,ano))}</th>${cols}${varios?'<th>Total</th><th>AV%</th><th>Média/mês</th>':''}</tr></thead><tbody>${linhas}</tbody></table></div></div>
+  <p class="note">Mostra, mês a mês, as despesas variáveis e as fixas lado a lado com a receita. A classificação de cada conta é a mesma do <b>Ponto de equilíbrio</b> (Plano de contas › Classificação); impostos, CMO e despesas financeiras entram como fixa ou variável conforme a escolha feita lá. Use <b>AV%</b> para ver o peso de cada despesa sobre a receita e <b>AH%</b> para ver quanto cada uma subiu ou caiu em relação ao mês anterior. Toque em qualquer valor para ver os lançamentos. ${caixa?'Regime de caixa: só o que foi efetivamente pago e recebido, no mês da baixa.':'Regime de competência: pelo mês da competência de cada lançamento; a variação de estoque do DRE entra nas variáveis.'}${varios?` Média/mês considera ${nMed} ${nMed===1?'mês':'meses'} com lançamentos no período.`:''}</p>`;
+}
+ACT.fvDrill=el=>{ if(!FV_CACHE) return; const {L,ano,m0,m1}=FV_CACHE; const r=L[+el.dataset.i]; if(!r||!r.dr) return;
+  const t=el.dataset.m==='T'; const a=t?m0:+el.dataset.m, b=t?m1:+el.dataset.m;
+  abrirDetalhe(r.label.replace(/^\([^)]*\)\s*/,''), itensDRE(r.dr,ano,a,b,F.fvReg), `Fixas × variáveis · ${t?rotuloPer(F.fvP,ano):MESES[a]+'/'+ano} · ${F.fvReg==='caixa'?'regime de caixa (data da baixa)':'por competência'}`); };
+CHG.fvAno=el=>{ F.fvAno=+el.value; render(); };
+CHG.fvAV=el=>{ F.fvAV=el.checked; render(); }; CHG.fvAH=el=>{ F.fvAH=el.checked; render(); };
+ACT.fvTg=el=>{ const g=el.dataset.g; F.fvExp[g]=!F.fvExp[g]; render(); };
+ACT.fvReg=el=>{ F.fvReg=el.dataset.v; render(); };
+ACT.fvTudo=()=>{ F.fvTudo=!F.fvTudo; F.fvExp={}; render(); };
 
 /* ======================= DRE ======================= */
 F.dreAno=new Date().getFullYear(); F.dreAV=true; F.dreAH=false; F.dreExp={}; F.dreTudo=false; F.dreP=novoPer();
@@ -2341,6 +2420,21 @@ REL_EXP.dre=()=>{ const ano=F.dreAno, reg=F.dreReg, {L,base}=dreLinhas(ano,reg),
     linhas.push({v, estilo:r.cls==='res'?'secao':r.cls==='tot'?'grupo':r.cls==='acc'?'det':r.cls==='info'?'off':'', nivel:r.cls==='grp'?1:r.cls==='acc'?2:0}); });
   return {titulo:cx?'DRE - regime de caixa':'DRE - regime de competência', arquivo:`DRE_${cx?'caixa':'competencia'}_Truckcar_${rotuloPer(F.dreP,ano).replace(/[º\/ ]+/g,'_')}`, paisagem:MS.length>2,
     filtros:['Período: '+rotuloPer(F.dreP,ano),cx?'Regime de caixa: títulos pagos/recebidos, pela data e valor da baixa':'Regime de competência',F.dreTudo?'Contas detalhadas (só as com valor no período)':'Contas conforme abertas na tela'], cols, linhas}; };
+REL_EXP.fixvar=()=>{ const ano=F.fvAno, reg=F.fvReg, {L,base}=fvLinhas(ano,reg), [m0,m1]=faixa(F.fvP); const MS=[]; for(let i=m0;i<=m1;i++) MS.push(i);
+  const varios=MS.length>1, soma=a=>MS.reduce((t,i)=>t+a[i],0), totBase=soma(base), aberto=g=>F.fvTudo||F.fvExp[g];
+  const nMed=Math.max(1,MS.filter(i=>ativos().some(l=>{ const mv_=movDRE(l,reg); return mv_&&mv_.data.startsWith(ano+'-'+pad(i+1)); })).length);
+  const dias=(L.find(r=>r.edit==='dias')||{vals:Array(12).fill(0)}).vals, sd=soma(dias);
+  const cols=[{t:'Fixas × variáveis · '+rotuloPer(F.fvP,ano)}]; const cx=reg==='caixa';
+  MS.forEach(i=>{ cols.push({t:MES3[i],tipo:'moeda'}); if(F.fvAV) cols.push({t:'AV%',tipo:'pct',w:16}); if(F.fvAH) cols.push({t:'AH%',tipo:'pct',w:16}); });
+  if(varios) cols.push({t:'Total',tipo:'moeda'},{t:'AV%',tipo:'pct',w:16},{t:'Média/mês',tipo:'moeda'});
+  const linhas=[];
+  L.forEach(r=>{ if(r.cls==='acc' && (!aberto(r.pai) || !MS.some(i=>r.vals[i]))) return; const v=[r.label]; const info=r.cls==='info';
+    MS.forEach((i,k)=>{ const x=r.vals[i]; v.push(r.int?(x?String(Math.round(x)):''):(x||'')); if(F.fvAV) v.push(!info&&base[i]&&x?x/base[i]:''); if(F.fvAH){ const ant=k>0?r.vals[MS[k-1]]:(i>0?r.vals[i-1]:0); v.push(!info&&ant&&x?(x-ant)/Math.abs(ant):''); } });
+    if(varios){ const tot=r.int?(soma(r.vals)?String(soma(r.vals)):''): r.semTotal?(totBase&&sd?totBase/sd:''): r.edit==='ei'?r.vals[m0]: r.edit==='ef'?r.vals[m1]: soma(r.vals);
+      v.push(tot||''); v.push(!info&&totBase&&tot&&typeof tot==='number'?tot/totBase:''); v.push(info||!tot?'':tot/nMed); }
+    linhas.push({v, estilo:r.cls==='res'?'secao':r.cls==='tot'?'grupo':r.cls==='acc'?'det':r.cls==='info'?'off':'', nivel:r.cls==='grp'?1:r.cls==='acc'?2:0}); });
+  return {titulo:cx?'Despesas fixas × variáveis - regime de caixa':'Despesas fixas × variáveis - competência', arquivo:`Fixas_variaveis_${cx?'caixa':'competencia'}_Truckcar_${rotuloPer(F.fvP,ano).replace(/[º\/ ]+/g,'_')}`, paisagem:MS.length>2,
+    filtros:['Período: '+rotuloPer(F.fvP,ano),cx?'Regime de caixa: títulos pagos/recebidos, pela data e valor da baixa':'Regime de competência',F.fvTudo?'Contas detalhadas (só as com valor no período)':'Contas conforme abertas na tela'], cols, linhas}; };
 
 
 /* ======================= RELATÓRIOS DE CONTAS A PAGAR E A RECEBER ======================= */
