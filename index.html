@@ -2566,7 +2566,7 @@ REL_EXP.rel_pagar=()=>expRL('P'); REL_EXP.rel_receber=()=>expRL('R');
 
 /* ======================= CUSTEIO POR SETOR (custo hora) ======================= */
 /* Custos fixos do ERP (classificações tratadas como fixas no ponto de equilíbrio), rateados entre os dois setores e divididos pelas horas de trabalho. */
-const CU_DEF={mesesRef:2, impInf:0, base:'erp', fixoInf:0, rateio:'horas', pct_prep:40, pct_acab:30, pct_pol:15, pct_hig:15, dias:22, horas:8.5, pes:2, prod:100, lucro:15, mcBase:'erp', varInf:40};
+const CU_DEF={distBase:'orc', mesesRef:2, impInf:0, base:'erp', fixoInf:0, rateio:'horas', pct_prep:40, pct_acab:30, pct_pol:15, pct_hig:15, dias:22, horas:8.5, pes:2, prod:100, lucro:15, mcBase:'erp', varInf:40};
 const CU_FOLGA=0.05; /* margem mínima que precisa sobrar para cobrir o fixo (5% do preço) */
 /* Os 4 setores de serviço (mesmas chaves do orçamento detalhado) */
 const CU_SET=[{k:'prep', nome:'Preparação'},{k:'acab', nome:'Acabamento'},{k:'pol', nome:'Polimento'},{k:'hig', nome:'Higienização'}];
@@ -2577,11 +2577,20 @@ function cuCfg(){ const c=Object.assign({},CU_DEF,S.cfg.custeio||{});
   if(S.cfg.custeio && !('rateio4' in S.cfg.custeio)) c.rateio='horas';
   return c; }
 function setorPadrao(nome){ const n=norm(nome); if(/PREPAR|FUNIL|CHAPE|PINTUR|DESMONT|MONTAG/.test(n)) return 'prep'; if(/ACABAM/.test(n)) return 'acab'; if(/POLIM/.test(n)) return 'pol'; if(/HIGIEN|LAVAG/.test(n)) return 'hig'; return ''; }
-function setorDaConta(c){ const m=cuCfg().recSetor||{}; if(c.id in m){ const v=m[c.id]; return v==='A'?'prep':v==='B'?'acab':v; } return setorPadrao(c.nome); }
+function setorDaConta(c){ const C=cuCfg(), m=C.recSetor||{}; if(!C.distMig && /RECEITA.*VENDA|VENDAS? GER/.test(norm(c.nome))) return 'dist'; if(c.id in m){ const v=m[c.id]; return v==='A'?'prep':v==='B'?'acab':v; } return setorPadrao(c.nome); }
 const SET_KEYS=CU_SET.map(s=>s.k), zSet=()=>Object.fromEntries(SET_KEYS.map(k=>[k,0]));
-function receitaSetores(ano,m0,m1){ const V=valoresPorConta(ano,'comp'), out=Object.assign(zSet(),{N:0,semSetor:[]});
+const CU_DIST={orc:'Pelo valor dos orçamentos aprovados', horas:'Pelas horas dos orçamentos aprovados', pct:'Percentual fixo'};
+/* Pesos do mês para distribuir a receita geral: valor ou horas dos orçamentos aprovados no mês; sem orçamentos, percentual fixo */
+function distPesos(ano,m){ const C=cuCfg(), w=zSet(); let base=C.distBase||'orc', n=0;
+  if(base!=='pct') S.orcamentos.forEach(o=>{ if(o.status!=='aprovado') return; const d=String(o.aprovadoEm||o.data||'').slice(0,10); if(+d.slice(0,4)!==ano || +d.slice(5,7)-1!==m) return;
+    const c=base==='orc'?orcCalc(o):null; let tem=false; SET_KEYS.forEach(k=>{ const v=base==='orc'?((c[k]||{}).preco||0):horasOrcSetor(o,k); if(v>0){ w[k]+=v; tem=true; } }); if(tem) n++; });
+  let t=SET_KEYS.reduce((a,k)=>a+w[k],0);
+  if(!(t>0)){ base='pct'; SET_KEYS.forEach(k=>w[k]=Math.max(0,parseNum(C['pct_'+k]))); t=SET_KEYS.reduce((a,k)=>a+w[k],0)||1; }
+  const p={}; SET_KEYS.forEach(k=>p[k]=w[k]/t); return {p, base, n}; }
+function receitaSetores(ano,m0,m1){ const V=valoresPorConta(ano,'comp'), out=Object.assign(zSet(),{N:0,semSetor:[],dist:[]});
   gruposDe('receita').forEach(g=>g.contas.forEach(c=>{ let v=0; for(let i=m0;i<=m1;i++) v+=(V[c.id]||[])[i]||0; const k=setorDaConta(c);
-    if(SET_KEYS.includes(k)) out[k]+=v; else if(v){ out.N+=v; out.semSetor.push({nome:c.nome, v}); } })); return out; }
+    if(k==='dist'){ for(let i=m0;i<=m1;i++){ const vi=(V[c.id]||[])[i]||0; if(!vi) continue; const P=distPesos(ano,i), parts={}; SET_KEYS.forEach(s=>{ parts[s]=vi*P.p[s]; out[s]+=parts[s]; }); out.dist.push({conta:c.nome, m:i, v:vi, base:P.base, n:P.n, parts}); } }
+    else if(SET_KEYS.includes(k)) out[k]+=v; else if(v){ out.N+=v; out.semSetor.push({nome:c.nome, v}); } })); return out; }
 const contasDoSetor=k=>gruposDe('receita').flatMap(g=>g.contas).filter(c=>c.ativo!==false && setorDaConta(c)===k).map(c=>c.nome);
 /* Horas por setor dos orçamentos aprovados no período (orçamento simples: Preparação e Acabamento; detalhado: os 4 setores) */
 function horasOrcSetor(o,k){ const x=(o.setores||{})[k]; if(!x) return 0; return o.tipo==='det'? (+x.horas||0) : (+x.qt||0); }
@@ -2602,7 +2611,7 @@ function calcCusteio(ano, m0, m1){
   const hTm=hT/meses, ocup=hProd?hTm/hProd:null;
   const set=CU_SET.map(s=>{ const cf=fixo*pct[s.k], recM=rec[s.k]/meses, hM=hrs[s.k]/meses;
     return Object.assign({},s,{pct:pct[s.k], cf, rec:recM, horas:hM, cob:cf?recM*Math.max(0,mc)/cf:null, absorvido:hM*ch}); });
-  return {C, R, T, recN:rec.N, semSetor:rec.semSetor, usado, aviso, nOrc:hrs.n, mcERP, inviavel:mc-lucro<CU_FOLGA, ano, m0, m1, meses, fixo, fixoERP, hMes, pes, hCap, hProd, prod, ch, precoMin, precoLucro, hT:hTm, ocup, mc, lucro, set, rotulo:rotuloPer({tipo:'per',de:m0,ate:m1},ano)};
+  return {C, R, T, recN:rec.N, semSetor:rec.semSetor, dist:rec.dist, usado, aviso, nOrc:hrs.n, mcERP, inviavel:mc-lucro<CU_FOLGA, ano, m0, m1, meses, fixo, fixoERP, hMes, pes, hCap, hProd, prod, ch, precoMin, precoLucro, hT:hTm, ocup, mc, lucro, set, rotulo:rotuloPer({tipo:'per',de:m0,ate:m1},ano)};
 }
 /* Base de referência para os orçamentos: últimos N meses fechados com custo fixo lançado (N = 2 ou 3, no Custeio) */
 function fixosRef(){ const C=cuCfg(), N=Math.min(3,Math.max(1,Math.round(+C.mesesRef)||2)), T=tratPE();
@@ -2644,7 +2653,8 @@ function vCusteio(){
       <div class="rp-dt cu-grp"><span class="rp-dl">Horas</span>${num('dias','Dias no mês','dias',105)}${num('horas','Horas por dia','h',105)}${num('pes','Pessoas na produção','',140)}${num('prod','Produtividade','%',105)}</div>
     </div>
     <div class="cu-par-row">
-      <div class="rp-dt cu-grp" style="flex-wrap:wrap"><span class="rp-dl">Receitas</span>${gruposDe('receita').flatMap(g=>g.contas).filter(c=>c.ativo!==false).map(c=>{ const k=setorDaConta(c); return `<div class="f" style="flex:0 1 170px"><label for="cuRS_${c.id}">${esc(c.nome)}</label><select id="cuRS_${c.id}" data-chg="cuRecSet" data-c="${c.id}">${CU_SET.map(s=>`<option value="${s.k}"${k===s.k?' selected':''}>${s.nome}</option>`).join('')}<option value=""${!k?' selected':''}>Não entra nos setores</option></select></div>`; }).join('')}</div>
+      <div class="rp-dt cu-grp" style="flex-wrap:wrap"><span class="rp-dl">Receitas</span>${gruposDe('receita').flatMap(g=>g.contas).filter(c=>c.ativo!==false).map(c=>{ const k=setorDaConta(c); return `<div class="f" style="flex:0 1 170px"><label for="cuRS_${c.id}">${esc(c.nome)}</label><select id="cuRS_${c.id}" data-chg="cuRecSet" data-c="${c.id}">${CU_SET.map(s=>`<option value="${s.k}"${k===s.k?' selected':''}>${s.nome}</option>`).join('')}<option value="dist"${k==='dist'?' selected':''}>Distribuir entre os setores</option><option value=""${!k?' selected':''}>Não entra nos setores</option></select></div>`; }).join('')}
+      ${gruposDe('receita').flatMap(g=>g.contas).some(c=>c.ativo!==false&&setorDaConta(c)==='dist')?`<div class="f" style="flex:0 1 auto"><label>Distribuir a receita geral</label><div class="chips" role="group" aria-label="Distribuir a receita geral">${Object.keys(CU_DIST).map(k=>`<button type="button" data-act="cuDist" data-v="${k}" aria-pressed="${(C.distBase||'orc')===k}">${k==='orc'?'Valor dos orçamentos':k==='horas'?'Horas dos orçamentos':'Percentual fixo'}</button>`).join('')}</div></div>${C.distBase==='pct'&&!(C.rateio==='manual'||X.usado==='manual')?CU_SET.map(s=>num('pct_'+s.k,s.nome,'%',105)).join(''):''}`:''}</div>
     </div>
     <div class="cu-par-row">
       <div class="rp-dt cu-grp" style="flex-wrap:wrap"><span class="rp-dl">Rateio</span><div class="f"><label>Forma</label><div class="chips" role="group" aria-label="Rateio">${Object.keys(CU_RAT).map(k=>`<button type="button" data-act="cuRat" data-v="${k}" aria-pressed="${C.rateio===k}">${k==='horas'?'Pelas horas':k==='fat'?'Pelo faturamento':'Percentual fixo'}</button>`).join('')}</div></div>
@@ -2662,6 +2672,11 @@ function vCusteio(){
   ${X.inviavel&&!semFixo?`<div class="warnbox">Com custos variáveis de <b>${pct(1-X.mc)}</b> do faturamento, a margem de contribuição é <b>${pct(X.mc)}</b>. O lucro desejado (<b>${pct(X.lucro)}</b>) precisa ser menor que ela, deixando pelo menos ${pct(CU_FOLGA)} para cobrir o custo fixo. Reduza o lucro desejado ou revise os custos variáveis${X.C.mcBase!=='inf'?' (num mês com pouco faturamento lançado, o % de variáveis do ERP pode estar distorcido; use "Informar %")':''}.</div>`:''}
   ${semFixo?`<div class="warnbox">Não há custos fixos ${C.base==='inf'?'informados':'lançados em '+esc(X.rotulo)}. ${C.base==='inf'?'Informe o valor do custo fixo mensal.':'Lance as despesas fixas em Contas a pagar ou use "Informar valor" para simular.'}</div>`:''}
   ${X.recN>0.004?`<div class="warnbox">${brl(X.recN)} de receita em ${esc(X.rotulo)} não está ligada a nenhum setor (${X.semSetor.map(x=>esc(x.nome)+' '+brl(x.v)).join(', ')}). Escolha o setor de cada conta em <b>Receitas</b>, acima, ou passe a lançar os serviços pelo Orçamento › Aprovar, que já separa por setor.</div>`:''}
+  ${X.dist&&X.dist.length?`<div class="card"><div class="card-h"><h2>Receita geral distribuída entre os setores</h2><span class="hint">${esc(rotuloPer(F.cuP,X.ano))} · só para análise: os lançamentos e o DRE não mudam</span></div>
+    <div class="tscroll"><table class="t"><thead><tr><th>Mês</th><th>Conta</th><th class="r">Receita</th><th>Base usada</th>${CU_SET.map(s=>`<th class="r">${s.nome}</th>`).join('')}</tr></thead><tbody>
+    ${X.dist.map(d=>`<tr><td>${MESES[d.m]}</td><td>${esc(d.conta)}</td><td class="r">${brl(d.v)}</td><td class="cell-sub">${d.base==='orc'?`valor de ${d.n} orçamento(s) aprovado(s)`:d.base==='horas'?`horas de ${d.n} orçamento(s) aprovado(s)`:((cuCfg().distBase||'orc')==='pct'?'percentual fixo':'percentual fixo (sem orçamentos aprovados no mês)')}</td>${CU_SET.map(s=>`<td class="r">${d.parts[s.k]>=0.005?brl(d.parts[s.k])+`<div class="cell-sub">${pct(d.parts[s.k]/d.v)}</div>`:'—'}</td>`).join('')}</tr>`).join('')}
+    </tbody>${X.dist.length>1?`<tfoot><tr><td colspan="2">Total</td><td class="r">${brl(X.dist.reduce((a,d)=>a+d.v,0))}</td><td></td>${CU_SET.map(s=>`<td class="r">${brl(X.dist.reduce((a,d)=>a+d.parts[s.k],0))}</td>`).join('')}</tr></tfoot>`:''}</table></div>
+    <p class="note" style="margin:6px 0 0">A receita das contas marcadas como "Distribuir entre os setores" é dividida mês a mês na proporção ${(cuCfg().distBase||'orc')==='horas'?'das horas':(cuCfg().distBase||'orc')==='pct'?'do percentual fixo':'do valor'} de cada setor nos orçamentos aprovados naquele mês. Mês sem orçamento aprovado usa o percentual fixo. Os valores somam no faturamento e na cobertura de cada setor, abaixo.</p></div>`:''}
   <div class="cu-grid">
     <div class="card cu-set">
       <div class="cu-set-h"><div><h2>Custo fixo por hora</h2><span class="hint">oficina inteira · vale para os 4 setores</span></div></div>
@@ -2694,7 +2709,10 @@ function vCusteio(){
 const cuSalvar=(k,v)=>{ S.cfg.custeio=Object.assign(cuCfg(),{[k]:v, rateio4:1}); if(k!=='rateio' && !('rateio' in (S.cfg.custeio||{}))) S.cfg.custeio.rateio='horas'; salvarDoc('geral'); render(); };
 CHG.cu=el=>{ const k=el.dataset.k; let v=parseNum(el.value); if(k.startsWith('pct_')) v=Math.min(100,Math.max(0,v)); if(k==='pes') v=Math.max(1,Math.round(v)||1); cuSalvar(k,v); };
 CHG.cuAno=el=>{ F.cuAno=+el.value; render(); };
-CHG.cuRecSet=el=>{ const m=Object.assign({}, cuCfg().recSetor||{}, {[el.dataset.c]:el.value}); cuSalvar('recSetor', m); };
+CHG.cuRecSet=el=>{ const C=cuCfg(), m=Object.assign({}, C.recSetor||{});
+  if(!C.distMig) gruposDe('receita').flatMap(g=>g.contas).forEach(c=>{ if(setorDaConta(c)==='dist') m[c.id]='dist'; });
+  m[el.dataset.c]=el.value; S.cfg.custeio=Object.assign(cuCfg(),{distMig:1}); cuSalvar('recSetor', m); };
+ACT.cuDist=el=>cuSalvar('distBase', el.dataset.v);
 ACT.cuBase=el=>cuSalvar('base',el.dataset.v); ACT.cuMc=el=>cuSalvar('mcBase',el.dataset.v); ACT.cuRat=el=>cuSalvar('rateio',el.dataset.v);
 ACT.cuPasso=()=>{ F.cuPasso=!F.cuPasso; render(); };
 ACT.cuRef=el=>cuSalvar('mesesRef',+el.dataset.v);
