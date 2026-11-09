@@ -163,6 +163,7 @@ input.n{text-align:right}
 .cu-ro{min-height:40px;display:flex;align-items:center;padding:0 10px;border:1px dashed var(--line);border-radius:8px;font-family:var(--f-num);color:var(--muted)}
 .cu-fixo{display:flex;flex-direction:column;gap:2px;padding:6px 12px;border-left:3px solid var(--accent);background:var(--surface-2);border-radius:6px}
 .cu-fixo small{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}.cu-fixo b{font-family:var(--f-num);font-size:20px;font-weight:500}
+.od-comp-t td{padding:7px 10px} .od-comp-t tr.grp td{background:var(--surface-2)} .od-comp-t tr.tot td{border-top:2px solid var(--line)}
 .cu-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
 .cu-set{display:flex;flex-direction:column;gap:14px}
 .cu-set-h h2{font-size:22px}
@@ -2554,7 +2555,7 @@ REL_EXP.rel_pagar=()=>expRL('P'); REL_EXP.rel_receber=()=>expRL('R');
 
 /* ======================= CUSTEIO POR SETOR (custo hora) ======================= */
 /* Custos fixos do ERP (classificações tratadas como fixas no ponto de equilíbrio), rateados entre os dois setores e divididos pelas horas de trabalho. */
-const CU_DEF={base:'erp', fixoInf:0, rateio:'horas', pct_prep:40, pct_acab:30, pct_pol:15, pct_hig:15, dias:22, horas:8.5, pes:2, prod:100, lucro:15, mcBase:'erp', varInf:40};
+const CU_DEF={mesesRef:2, base:'erp', fixoInf:0, rateio:'horas', pct_prep:40, pct_acab:30, pct_pol:15, pct_hig:15, dias:22, horas:8.5, pes:2, prod:100, lucro:15, mcBase:'erp', varInf:40};
 const CU_FOLGA=0.05; /* margem mínima que precisa sobrar para cobrir o fixo (5% do preço) */
 /* Os 4 setores de serviço (mesmas chaves do orçamento detalhado) */
 const CU_SET=[{k:'prep', nome:'Preparação'},{k:'acab', nome:'Acabamento'},{k:'pol', nome:'Polimento'},{k:'hig', nome:'Higienização'}];
@@ -2592,10 +2593,20 @@ function calcCusteio(ano, m0, m1){
     return Object.assign({},s,{pct:pct[s.k], cf, rec:recM, horas:hM, cob:cf?recM*Math.max(0,mc)/cf:null, absorvido:hM*ch}); });
   return {C, R, T, recN:rec.N, semSetor:rec.semSetor, usado, aviso, nOrc:hrs.n, mcERP, inviavel:mc-lucro<CU_FOLGA, ano, m0, m1, meses, fixo, fixoERP, hMes, pes, hCap, hProd, prod, ch, precoMin, precoLucro, hT:hTm, ocup, mc, lucro, set, rotulo:rotuloPer({tipo:'per',de:m0,ate:m1},ano)};
 }
-/* Custo fixo por hora de referência para o orçamento: média dos últimos 3 meses fechados (ou o valor informado no Custeio) */
-function cuHoraRef(){ try{ const d=new Date(); let y=d.getFullYear(), m=d.getMonth()-1; const vs=[];
-  for(let i=0;i<3;i++){ if(m<0){ m=11; y--; } const X=calcCusteio(y,m,m); if(X.ch>0) vs.push(X.ch); m--; }
-  if(!vs.length){ const X=calcCusteio(); return X.ch>0?X.ch:0; } return vs.reduce((a,b)=>a+b,0)/vs.length; }catch(e){ return 0; } }
+/* Base de referência para os orçamentos: últimos N meses fechados com custo fixo lançado (N = 2 ou 3, no Custeio) */
+function fixosRef(){ const C=cuCfg(), N=Math.min(3,Math.max(1,Math.round(+C.mesesRef)||2)), T=tratPE();
+  const pes=Math.max(1,Math.round(parseNum(C.pes))||1), prod=Math.min(100,Math.max(1,parseNum(C.prod)))/100, hProd=parseNum(C.dias)*parseNum(C.horas)*pes*prod;
+  const d=new Date(); let y=d.getFullYear(), m=d.getMonth()-1; const meses=[], porConta={};
+  for(let tent=0; tent<12 && meses.length<N; tent++){ if(m<0){ m=11; y--; }
+    const V=valoresPorConta(y,'comp'); let tot=0; const linha={};
+    ORDEM.filter(sc=>SECOES[sc].nat==='P').forEach(sc=>gruposDe(sc).forEach(g=>g.contas.forEach(c=>{ const k=classeDe(c,g); if(!k || T[k]!=='F') return; const v=(V[c.id]||[])[m]||0; if(v){ linha[c.id]={v, nome:c.nome, grupo:g.nome, classe:k}; tot+=v; } })));
+    if(tot>0){ meses.push({y,m,tot}); Object.entries(linha).forEach(([id,x])=>{ const o=porConta[id]=porConta[id]||{id, nome:x.nome, grupo:x.grupo, classe:x.classe, soma:0}; o.soma+=x.v; }); }
+    m--; }
+  const n=meses.length||1, contas=Object.values(porConta).map(o=>Object.assign(o,{media:o.soma/n})).sort((a,b)=>b.media-a.media);
+  let total=contas.reduce((a,o)=>a+o.media,0), inf=false;
+  if(C.base==='inf' && parseNum(C.fixoInf)>0){ total=parseNum(C.fixoInf); inf=true; }
+  return {N, meses, contas, total, inf, hProd, ch:hProd?total/hProd:0, rotulo:meses.length?meses.slice().reverse().map(x=>MES3[x.m]+'/'+String(x.y).slice(2)).join(', '):'' }; }
+function cuHoraRef(){ try{ return fixosRef().ch; }catch(e){ return 0; } }
 
 function vCusteio(){
   const X=calcCusteio(), C=X.C, fks=Object.keys(CLASSES).filter(k=>X.T[k]==='F');
@@ -2613,6 +2624,7 @@ function vCusteio(){
   <div class="card cu-par">
     <div class="cu-par-row">
       <div class="f" style="flex:0 1 auto"><label>Custo fixo mensal</label><div class="chips" role="group" aria-label="Base do custo fixo"><button type="button" data-act="cuBase" data-v="erp" aria-pressed="${C.base==='erp'}">Lançado no ERP</button><button type="button" data-act="cuBase" data-v="inf" aria-pressed="${C.base==='inf'}">Informar valor</button></div></div>
+      <div class="f" style="flex:0 1 auto"><label>Base para os orçamentos</label><div class="chips" role="group" aria-label="Meses de referência">${[2,3].map(n=>`<button type="button" data-act="cuRef" data-v="${n}" aria-pressed="${(+C.mesesRef||2)===n}">Últimos ${n} meses</button>`).join('')}</div><span class="hint">${(()=>{ const r=fixosRef(); return r.meses.length?`${esc(r.rotulo)} · ${brl(r.ch)}/h`:'sem meses fechados com custo fixo'; })()}</span></div>
       ${C.base==='inf'?`<div class="f cu-in" style="flex:0 1 170px"><label for="cu_fixoInf">Valor mensal (R$)</label><input id="cu_fixoInf" class="n" inputmode="decimal" value="${fmoney(parseNum(C.fixoInf))}" data-chg="cu" data-k="fixoInf"></div>`:`<div class="cu-fixo"><small>${esc(X.rotulo)}${X.meses>1?' · média de '+X.meses+' meses':''}</small><b>${brl(X.fixoERP)}</b><span class="hint">${fks.map(k=>CLASSE_CURTA[k]).join(' + ')}: aluguel, água, luz, telefone, salários… (como no ponto de equilíbrio)</span></div>`}
     </div>
     <div class="cu-par-row">
@@ -2671,6 +2683,7 @@ CHG.cuAno=el=>{ F.cuAno=+el.value; render(); };
 CHG.cuRecSet=el=>{ const m=Object.assign({}, cuCfg().recSetor||{}, {[el.dataset.c]:el.value}); cuSalvar('recSetor', m); };
 ACT.cuBase=el=>cuSalvar('base',el.dataset.v); ACT.cuMc=el=>cuSalvar('mcBase',el.dataset.v); ACT.cuRat=el=>cuSalvar('rateio',el.dataset.v);
 ACT.cuPasso=()=>{ F.cuPasso=!F.cuPasso; render(); };
+ACT.cuRef=el=>cuSalvar('mesesRef',+el.dataset.v);
 
 REL_EXP.custeio=()=>{ const X=calcCusteio(); const L=[]; const lin=(v,e)=>L.push({v, estilo:e||''});
   lin(['Custo fixo por hora (oficina)', X.ch||'', '', '', ''],'secao');
@@ -2998,6 +3011,7 @@ function vOrcDet(){
   <div class="od-setores">${OD_SET.map(setor).join('')}</div>
   <section class="card" aria-label="Observações"><div class="f"><label for="od_obs">Observações para o cliente (saem no PDF)</label><textarea id="od_obs" rows="3" data-inp="odIn" data-k="obs" placeholder="Garantia, itens não inclusos, peças fornecidas pelo cliente…"${dis}>${esc(O.obs||'')}</textarea></div>
     <label class="check" for="od_pdfItens"><input id="od_pdfItens" type="checkbox" data-chg="odIn" data-k="pdfItens"${O.pdfItens?' checked':''}${dis}> Listar os materiais no PDF (só descrição e quantidade, sem custos)</label></section>
+  <section class="card od-comp" aria-label="Composição do custo"><div class="oq-setor-h od-sh"><h2>Composição do custo</h2><span class="hint">Uso interno: não sai no PDF nem no resumo do cliente</span></div><div id="odComp"></div></section>
   <section class="oq-total" aria-live="polite"><h2>Total do orçamento</h2><b id="odTotal">—</b><span class="oq-det" id="odDet"></span></section>
   ${trav?`<div class="warnbox">Orçamento aprovado: já virou conta a receber${O.lancIds&&O.lancIds.length?` (${O.lancIds.length} título(s), documento "Orç. ${esc(O.numero)}")`:''}. Para mudar valores, edite os títulos em Contas a receber ou desfaça a aprovação. <button type="button" class="btn sm" data-act="odDesfazer" style="margin-left:8px">Desfazer aprovação</button></div>`:''}
   <section class="card" style="display:flex;flex-direction:column;gap:10px">
@@ -3033,11 +3047,31 @@ function odResumo(O){ const c=odCalc(O), SV=O.servico||{};
   return ['*ORÇAMENTO DE SERVIÇO TRUCKCAR* · Nº '+O.numero, O.orcamentista?'Orçamentista: '+O.orcamentista:null, O.cliente?'Cliente: '+O.cliente:null, O.veiculo?'Veículo: '+O.veiculo:null, O.data?'Data: '+dataBR(O.data):null,
     SV.descricao?'\n'+SV.descricao:null, '', ...OD_SET.filter(s=>c[s.k].preco>0).map(s=>s.nome+': '+brl(c[s.k].preco)), '', '*Total: '+brl(c.total)+'*',
     SV.prazo?'Prazo de execução: '+SV.prazo:null, SV.pagamento?'Pagamento: '+SV.pagamento:null, O.validade?'Validade: '+O.validade+' dias':null, O.obs?'\n'+O.obs:null].filter(x=>x!==null).join('\n'); }
+/* Cadeia de custo do orçamento: materiais + cada despesa fixa rateada pelas horas + margem */
+function odCompHTML(O,c){ const R=fixosRef(), H=OD_SET.reduce((a,s)=>a+(+((O.setores[s.k]||{}).horas)||0),0);
+  const mat=OD_SET.reduce((a,s)=>a+c[s.k].mat,0), mo=OD_SET.reduce((a,s)=>a+c[s.k].mo,0), refMO=H*R.ch, fat=refMO>0?mo/refMO:1;
+  const lin=(t,v,sub,cls)=>`<tr class="${cls||''}"><td>${t}${sub?`<div class="cell-sub">${sub}</div>`:''}</td><td class="r">${v}</td></tr>`;
+  const pctT=v=>c.total>0?`<span class="cell-sub" style="margin-left:6px">${pct(v/c.total)}</span>`:'';
+  let rows='';
+  rows+=lin('<b>Materiais</b>', brl(mat)+pctT(mat), OD_SET.filter(s=>c[s.k].mat).map(s=>esc(s.nome)+' '+brl(c[s.k].mat)).join(' · '), 'grp');
+  rows+=lin(`<b>Mão de obra e estrutura</b>`, brl(mo)+pctT(mo), H?`${fnum(H,2)} h no total (${OD_SET.filter(s=>+((O.setores[s.k]||{}).horas)).map(s=>esc(s.nome)+' '+fnum(+O.setores[s.k].horas,2)+' h').join(' · ')})`:'informe as horas de cada setor', 'grp');
+  if(H>0 && R.ch>0){
+    if(R.inf) rows+=lin('Custo fixo mensal informado no Custeio', brl(mo), `${brl(R.total)} ÷ ${fnum(R.hProd,1)} h produtivas = ${brl(R.ch)}/h × ${fnum(H,2)} h`);
+    else R.contas.forEach(o=>{ const v=o.media/R.hProd*H*fat; if(v>=0.005) rows+=lin(`<span style="padding-left:14px;display:inline-block">${esc(o.grupo)} › ${esc(o.nome)}</span>`, brl(v), `<span style="padding-left:14px;display:inline-block">média ${brl(o.media)}/mês ÷ ${fnum(R.hProd,1)} h = ${odCu(o.media/R.hProd)}/h × ${fnum(H,2)} h</span>`); });
+    if(Math.abs(fat-1)>0.005) rows+=lin('<span class="cell-sub">Ajuste pelo custo da hora digitado nos setores</span>', `<span class="cell-sub">${fat>1?'+':''}${pct(fat-1)}</span>`);
+  }
+  rows+=lin('<b>Custo total do orçamento</b>', `<b>${brl(c.custo)}</b>`, '', 'tot');
+  rows+=lin('Preço ao cliente', brl(c.total), OD_SET.filter(s=>c[s.k].preco).map(s=>esc(s.nome)+' '+brl(c[s.k].preco)).join(' · '));
+  rows+=lin(`<b>Margem (preço − custo)</b>`, `<b class="${c.margem<0?'neg-t':''}">${brl(c.margem)}</b>${c.total>0?`<span class="cell-sub" style="margin-left:6px">${pct(c.mp)}</span>`:''}`, 'antes de impostos e taxas sobre a venda', 'tot');
+  const base=R.inf?'custo fixo informado no Custeio':R.meses.length?`média de ${R.meses.length===1?'1 mês':R.meses.length+' meses'} fechados (${esc(R.rotulo)})`:'sem meses fechados com custo fixo lançado';
+  return `<div class="tscroll"><table class="t od-comp-t"><tbody>${rows}</tbody></table></div>
+    <p class="note" style="margin:6px 0 0">Estrutura rateada pelas horas do orçamento: cada despesa fixa (${base}) ÷ ${fnum(R.hProd,1)} horas produtivas da oficina no mês = custo por hora, × horas deste orçamento. Base de meses e horas produtivas: Custeio por setor.</p>`; }
 function odAtualizar(){ const O=F.odEd; if(!O || !$('#odTotal')) return; const c=odCalc(O);
   OD_SET.forEach(s=>{ const x=O.setores[s.k], r=c[s.k];
     x.itens.forEach((it,i)=>{ const t=$('#odt_'+s.k+'_'+i); if(t) t.textContent=(+it.qtd||0)*(+it.custo||0)?brl((+it.qtd||0)*(+it.custo||0)):'—'; });
     $('#od_'+s.k+'_mat').textContent=brl(r.mat); $('#od_'+s.k+'_mo').textContent=brl(r.mo); $('#od_'+s.k+'_custo').textContent=brl(r.custo); $('#od_'+s.k+'_preco').textContent=brl(r.preco);
     const m=$('#od_'+s.k+'_marg'); if(m) m.textContent=r.preco>0?`margem ${brl(r.margem)} · ${pct(r.mp)}${r.manual&&r.custo>0?' · mult. '+fnum(r.preco/r.custo,2):''}`:''; });
+  const cp=$('#odComp'); if(cp) cp.innerHTML=odCompHTML(O,c);
   $('#odTotal').textContent=brl(c.total); $('#odDet').textContent=OD_SET.map(s=>s.nome+' '+brl(c[s.k].preco)).join('  +  ')+(c.total>0?`   ·   custo ${brl(c.custo)} · margem ${pct(c.mp)}`:'');
   $('#odNumTop').textContent=O.numero||'—'; $('#odOrcTop').textContent=O.orcamentista||'—'; $('#odResumo').value=odResumo(O);
   const es=$('#odEstado'); if(es){ const ok=O.id&&F.odSalvo===odSnap(O); es.textContent=!O.id?'Ainda não salvo':ok?'Salvo':'Alterações não salvas'; es.classList.toggle('ok',!!ok); } }
