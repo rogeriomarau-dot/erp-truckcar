@@ -1320,7 +1320,7 @@ function vFixVar(){
       totCel = r.semTotal? `<td class="v">${totBase&&sd?fmoney(totBase/sd):'–'}</td><td class="p"></td><td class="v"></td>`
         : r.edit==='ei'? `<td class="v">${fmoney(r.vals[m0])}</td><td class="p"></td><td class="v"></td>`
         : r.edit==='ef'? `<td class="v">${fmoney(r.vals[m1])}</td><td class="p"></td><td class="v"></td>`
-        : r.edit==='dias'? `<td class="v">${tot||'–'}</td><td class="p"></td><td class="v"></td>`
+        : r.edit==='dias'? `<td class="v">${tot||'–'}</td><td class="p"></td><td class="v">${(()=>{ const n=MS.filter(i=>+r.vals[i]>0).length, t=MS.reduce((a,i)=>a+(+r.vals[i]||0),0); return n&&t?fnum(t/n,1):'–'; })()}</td>`
         : `${dCel(r,idx,'T',tot,tot<0)}<td class="p">${r.cls!=='info'&&totBase&&tot?pct(tot/totBase):''}</td><td class="v">${tot?fmoney(tot/nMed):''}</td>`;
     }
     return `<tr class="${r.cls}"><td>${lbl}</td>${cel}${totCel}</tr>`;
@@ -1417,7 +1417,7 @@ function vDRE(){
       totCel = r.semTotal? `<td class="v">${totBase&&sd?fmoney(totBase/sd):'–'}</td><td class="p"></td><td class="v"></td>`
         : r.edit==='ei'? `<td class="v">${fmoney(r.vals[m0])}</td><td class="p"></td><td class="v"></td>`
         : r.edit==='ef'? `<td class="v">${fmoney(r.vals[m1])}</td><td class="p"></td><td class="v"></td>`
-        : r.edit==='dias'? `<td class="v">${tot||'–'}</td><td class="p"></td><td class="v"></td>`
+        : r.edit==='dias'? `<td class="v">${tot||'–'}</td><td class="p"></td><td class="v">${(()=>{ const n=MS.filter(i=>+r.vals[i]>0).length, t=MS.reduce((a,i)=>a+(+r.vals[i]||0),0); return n&&t?fnum(t/n,1):'–'; })()}</td>`
         : `${dCel(r,idx,'T',tot,tot<0)}<td class="p">${r.cls!=='info'&&totBase&&tot?pct(tot/totBase):''}</td><td class="v">${tot?fmoney(tot/nMed):''}</td>`;
     }
     return `<tr class="${r.cls}"><td>${lbl}</td>${cel}${totCel}</tr>`;
@@ -2419,7 +2419,7 @@ REL_EXP.dre=()=>{ const ano=F.dreAno, reg=F.dreReg, {L,base}=dreLinhas(ano,reg),
   L.forEach(r=>{ if(r.cls==='acc' && (!aberto(r.pai) || !MS.some(i=>r.vals[i]))) return; const v=[r.label]; const info=r.cls==='info';
     MS.forEach((i,k)=>{ const x=r.vals[i]; v.push(r.int?(x?String(Math.round(x)):''):(x||'')); if(F.dreAV) v.push(!info&&base[i]&&x?x/base[i]:''); if(F.dreAH){ const ant=k>0?r.vals[MS[k-1]]:(i>0?r.vals[i-1]:0); v.push(!info&&ant&&x?(x-ant)/Math.abs(ant):''); } });
     if(varios){ const tot=r.int?(soma(r.vals)?String(soma(r.vals)):''): r.semTotal?(totBase&&sd?totBase/sd:''): r.edit==='ei'?r.vals[m0]: r.edit==='ef'?r.vals[m1]: soma(r.vals);
-      v.push(tot||''); v.push(!info&&totBase&&tot&&typeof tot==='number'?tot/totBase:''); v.push(info||!tot?'':tot/nMed); }
+      v.push(tot||''); v.push(!info&&totBase&&tot&&typeof tot==='number'?tot/totBase:''); v.push(r.edit==='dias'?(()=>{ const n=MS.filter(i=>+r.vals[i]>0).length, t=MS.reduce((a,i)=>a+(+r.vals[i]||0),0); return n&&t?Math.round(t/n*10)/10:''; })():info||!tot?'':tot/nMed); }
     linhas.push({v, estilo:r.cls==='res'?'secao':r.cls==='tot'?'grupo':r.cls==='acc'?'det':r.cls==='info'?'off':'', nivel:r.cls==='grp'?1:r.cls==='acc'?2:0}); });
   return {titulo:cx?'DRE - regime de caixa':'DRE - regime de competência', arquivo:`DRE_${cx?'caixa':'competencia'}_Truckcar_${rotuloPer(F.dreP,ano).replace(/[º\/ ]+/g,'_')}`, paisagem:MS.length>2,
     filtros:['Período: '+rotuloPer(F.dreP,ano),cx?'Regime de caixa: títulos pagos/recebidos, pela data e valor da baixa':'Regime de competência',F.dreTudo?'Contas detalhadas (só as com valor no período)':'Contas conforme abertas na tela'], cols, linhas}; };
@@ -2434,7 +2434,7 @@ REL_EXP.fixvar=()=>{ const ano=F.fvAno, reg=F.fvReg, {L,base}=fvLinhas(ano,reg),
   L.forEach(r=>{ if(r.cls==='acc' && (!aberto(r.pai) || !MS.some(i=>r.vals[i]))) return; const v=[r.label]; const info=r.cls==='info';
     MS.forEach((i,k)=>{ const x=r.vals[i]; v.push(r.int?(x?String(Math.round(x)):''):(x||'')); if(F.fvAV) v.push(!info&&base[i]&&x?x/base[i]:''); if(F.fvAH){ const ant=k>0?r.vals[MS[k-1]]:(i>0?r.vals[i-1]:0); v.push(!info&&ant&&x?(x-ant)/Math.abs(ant):''); } });
     if(varios){ const tot=r.int?(soma(r.vals)?String(soma(r.vals)):''): r.semTotal?(totBase&&sd?totBase/sd:''): r.edit==='ei'?r.vals[m0]: r.edit==='ef'?r.vals[m1]: soma(r.vals);
-      v.push(tot||''); v.push(!info&&totBase&&tot&&typeof tot==='number'?tot/totBase:''); v.push(info||!tot?'':tot/nMed); }
+      v.push(tot||''); v.push(!info&&totBase&&tot&&typeof tot==='number'?tot/totBase:''); v.push(r.edit==='dias'?(()=>{ const n=MS.filter(i=>+r.vals[i]>0).length, t=MS.reduce((a,i)=>a+(+r.vals[i]||0),0); return n&&t?Math.round(t/n*10)/10:''; })():info||!tot?'':tot/nMed); }
     linhas.push({v, estilo:r.cls==='res'?'secao':r.cls==='tot'?'grupo':r.cls==='acc'?'det':r.cls==='info'?'off':'', nivel:r.cls==='grp'?1:r.cls==='acc'?2:0}); });
   return {titulo:cx?'Despesas fixas × variáveis - regime de caixa':'Despesas fixas × variáveis - competência', arquivo:`Fixas_variaveis_${cx?'caixa':'competencia'}_Truckcar_${rotuloPer(F.fvP,ano).replace(/[º\/ ]+/g,'_')}`, paisagem:MS.length>2,
     filtros:['Período: '+rotuloPer(F.fvP,ano),cx?'Regime de caixa: títulos pagos/recebidos, pela data e valor da baixa':'Regime de competência',F.fvTudo?'Contas detalhadas (só as com valor no período)':'Contas conforme abertas na tela'], cols, linhas}; };
