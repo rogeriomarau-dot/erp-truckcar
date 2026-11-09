@@ -9,7 +9,7 @@
   --bg:#ebeff1; --surface:#ffffff; --surface-2:#f4f7f8; --ink:#18233a; --muted:#566576; --line:#d0d8de;
   --accent:#1e6f73; --accent-ink:#ffffff; --accent-soft:#dff0f0;
   --side:#18233a; --side-ink:#c9d3e0; --side-hi:#ffffff; --side-act:#24344f;
-  --pos:#1e7a46; --pos-soft:#e1f2e8; --neg:#b42318; --neg-soft:#fbe7e5; --warn:#9a5b0c; --warn-soft:#fff4d6; --orange:#c2410c;
+  --pos:#1e7a46; --pos-soft:#e1f2e8; --neg:#b42318; --neg-soft:#fbe7e5; --warn:#9a5b0c; --warn-soft:#fff4d6; --orange:#1d5fbf;
   --bar-a:#1e6f73; --bar-b:#9aa8b8; --rd-rec:#3b78c2; --rd-desp:#e8917f; --rd-fixa:#8a76c9; --rd-ll:#8fd6a8; --rd-lltx:#2e8f57; --rd-llneg:#f2b8ae;
   --f-display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
   --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
@@ -20,13 +20,13 @@
   --bg:#0f141a; --surface:#18202a; --surface-2:#1e2833; --ink:#e5eaef; --muted:#93a0ae; --line:#2c3846;
   --accent:#62bfc2; --accent-ink:#0b1a1c; --accent-soft:#16312f;
   --side:#0b1016; --side-ink:#a9b6c6; --side-hi:#ffffff; --side-act:#1b2735;
-  --pos:#5fcb8b; --pos-soft:#163024; --neg:#f2867c; --neg-soft:#3a1c1a; --warn:#e8b05a; --warn-soft:#332a12; --orange:#fb923c;
+  --pos:#5fcb8b; --pos-soft:#163024; --neg:#f2867c; --neg-soft:#3a1c1a; --warn:#e8b05a; --warn-soft:#332a12; --orange:#7fb0ff;
   --bar-a:#62bfc2; --bar-b:#5b6878; --rd-rec:#6ea3e3; --rd-desp:#ee9d8c; --rd-fixa:#a99ae0; --rd-ll:#7fcf9b; --rd-lltx:#8fdcaa; --rd-llneg:#a5574b; --oq-input:#2a2614; --oq-save:#3b7fd4; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0f141a; --surface:#18202a; --surface-2:#1e2833; --ink:#e5eaef; --muted:#93a0ae; --line:#2c3846;
   --accent:#62bfc2; --accent-ink:#0b1a1c; --accent-soft:#16312f;
   --side:#0b1016; --side-ink:#a9b6c6; --side-hi:#ffffff; --side-act:#1b2735;
-  --pos:#5fcb8b; --pos-soft:#163024; --neg:#f2867c; --neg-soft:#3a1c1a; --warn:#e8b05a; --warn-soft:#332a12; --orange:#fb923c;
+  --pos:#5fcb8b; --pos-soft:#163024; --neg:#f2867c; --neg-soft:#3a1c1a; --warn:#e8b05a; --warn-soft:#332a12; --orange:#7fb0ff;
   --bar-a:#62bfc2; --bar-b:#5b6878; --rd-rec:#6ea3e3; --rd-desp:#ee9d8c; --rd-fixa:#a99ae0; --rd-ll:#7fcf9b; --rd-lltx:#8fdcaa; --rd-llneg:#a5574b; --oq-input:#2a2614; --oq-save:#3b7fd4; color-scheme:dark}
 
 *{box-sizing:border-box}
@@ -857,9 +857,9 @@ function vPainel(){
       : vazio('Sem lançamentos em '+gtit,'O gráfico aparece quando houver receitas e despesas lançadas com competência no período.')}
   </div>
   ${abcSecao(meses, perTxt)}
-  <div class="card"><div class="card-h"><h2>Próximos vencimentos</h2><span class="hint">Em aberto e vencidos · <span style="color:var(--orange)">laranja = a vencer</span> · <span style="color:var(--neg)">vermelho = vencido</span> · saldo acumulado = a receber − a pagar</span></div>
+  <div class="card"><div class="card-h"><h2>Próximos vencimentos</h2><span class="hint">Em aberto e vencidos · <span style="color:var(--orange)">azul = a vencer</span> · <span style="color:var(--neg)">vermelho = vencido</span> · saldo acumulado = a receber − a pagar</span></div>
     ${lista.length? `<div class="tscroll"><table class="t"><thead><tr><th>Vencimento</th><th>Tipo</th><th>Fornecedor / cliente</th><th>Categoria</th><th class="r">Valor</th><th>Situação</th><th class="r">Saldo acumulado</th></tr></thead><tbody>
-      ${(()=>{ let acc=0; return lista.map(l=>{ const s=stL(l); acc=Math.round((acc+(l.tipo==='R'?l.valor:-l.valor))*100)/100; return `<tr class="click ${s==='vencido'?'lin-vc':'lin-av'}" data-act="editar" data-id="${l.id}"><td class="num">${dataBR(l.vencimento)}</td><td style="white-space:nowrap">${l.tipo==='P'?'A pagar':'A receber'}</td><td><div class="cell-main">${esc(nomePessoa(l)||'—')}</div><div class="cell-sub">${esc(l.descricao||'')}</div></td><td class="cell-sub">${esc(nomeContaL(l))}</td><td class="r">${brl(l.valor)}</td><td><span class="pill ${s}">${ST_NOME[l.tipo][s]}</span></td><td class="r"><b style="color:${acc<0?'var(--neg)':'var(--pos)'}">${brl(acc)}</b></td></tr>`; }).join(''); })()}
+      ${(()=>{ let acc=0; return lista.map(l=>{ const s=stL(l); acc=Math.round((acc+(l.tipo==='R'?l.valor:-l.valor))*100)/100; return `<tr class="click ${s==='vencido'?'lin-vc':'lin-av'}" data-act="editar" data-id="${l.id}"><td class="num">${dataBR(l.vencimento)}</td><td style="white-space:nowrap">${l.tipo==='P'?'A pagar':'A receber'}</td><td><div class="cell-main">${esc(nomePessoa(l)||'—')}</div><div class="cell-sub">${esc(l.descricao||'')}</div></td><td class="cell-sub">${esc(nomeContaL(l))}</td><td class="r">${brl(l.valor)}</td><td><span class="pill ${s}">${s==='aberto'?'A vencer':ST_NOME[l.tipo][s]}</span></td><td class="r"><b style="color:${acc<0?'var(--neg)':'var(--pos)'}">${brl(acc)}</b></td></tr>`; }).join(''); })()}
     </tbody></table></div>` : `<p class="note">Nenhuma conta em aberto.</p>`}
   </div>`;
 }
