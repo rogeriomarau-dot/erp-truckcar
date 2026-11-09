@@ -163,7 +163,7 @@ input.n{text-align:right}
 .cu-ro{min-height:40px;display:flex;align-items:center;padding:0 10px;border:1px dashed var(--line);border-radius:8px;font-family:var(--f-num);color:var(--muted)}
 .cu-fixo{display:flex;flex-direction:column;gap:2px;padding:6px 12px;border-left:3px solid var(--accent);background:var(--surface-2);border-radius:6px}
 .cu-fixo small{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}.cu-fixo b{font-family:var(--f-num);font-size:20px;font-weight:500}
-.od-comp-t td{padding:7px 10px} .od-comp-t tr.grp td{background:var(--surface-2)} .od-comp-t tr.tot td{border-top:2px solid var(--line)} .od-comp-t tr.liq td{background:var(--accent-soft)} .pos-t{color:var(--pos)}
+.od-comp-t td{padding:7px 10px} .od-comp-t tr.grp td{background:var(--surface-2)} .od-comp-t tr.tot td{border-top:2px solid var(--line)} .od-comp-t tr.liq td{background:var(--accent-soft)} .od-comp-t th{font-size:12px;font-weight:600;color:var(--muted);padding:7px 10px} .pos-t{color:var(--pos)}
 .cu-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
 .cu-set{display:flex;flex-direction:column;gap:14px}
 .cu-set-h h2{font-size:22px}
@@ -3015,6 +3015,9 @@ function vOrcDet(){
   <section class="card" aria-label="Observações"><div class="f"><label for="od_obs">Observações para o cliente (saem no PDF)</label><textarea id="od_obs" rows="3" data-inp="odIn" data-k="obs" placeholder="Garantia, itens não inclusos, peças fornecidas pelo cliente…"${dis}>${esc(O.obs||'')}</textarea></div>
     <label class="check" for="od_pdfItens"><input id="od_pdfItens" type="checkbox" data-chg="odIn" data-k="pdfItens"${O.pdfItens?' checked':''}${dis}> Listar os materiais no PDF (só descrição e quantidade, sem custos)</label></section>
   <section class="card od-comp" aria-label="Composição do custo"><div class="oq-setor-h od-sh"><h2>Composição do custo</h2><span class="hint">Uso interno: não sai no PDF nem no resumo do cliente</span></div><div id="odComp"></div></section>
+  <section class="card od-comp" aria-label="Comparativo de preço"><div class="oq-setor-h od-sh"><h2>Comparativo de preço</h2><span class="hint">Uso interno: multiplicador × impostos + lucro desejado</span></div>
+    <div class="od-pin" style="max-width:420px">${fl('lucroAlvo','Lucro desejado (% do preço)',num('lucroAlvo',fnum(O.lucroAlvo!=null&&O.lucroAlvo!==''?+O.lucroAlvo:cuCfg().lucro,1)))}</div>
+    <div id="odCmp"></div></section>
   <section class="oq-total" aria-live="polite"><h2>Total do orçamento</h2><b id="odTotal">—</b><span class="oq-det" id="odDet"></span></section>
   ${trav?`<div class="warnbox">Orçamento aprovado: já virou conta a receber${O.lancIds&&O.lancIds.length?` (${O.lancIds.length} título(s), documento "Orç. ${esc(O.numero)}")`:''}. Para mudar valores, edite os títulos em Contas a receber ou desfaça a aprovação. <button type="button" class="btn sm" data-act="odDesfazer" style="margin-left:8px">Desfazer aprovação</button></div>`:''}
   <section class="card" style="display:flex;flex-direction:column;gap:10px">
@@ -3072,12 +3075,36 @@ function odCompHTML(O,c){ const R=fixosRef(), H=OD_SET.reduce((a,s)=>a+(+((O.set
   const base=R.inf?'custo fixo informado no Custeio':R.meses.length?`média de ${R.meses.length===1?'1 mês':R.meses.length+' meses'} fechados (${esc(R.rotulo)})`:'sem meses fechados com custo fixo lançado';
   return `<div class="tscroll"><table class="t od-comp-t"><tbody>${rows}</tbody></table></div>
     <p class="note" style="margin:6px 0 0">Estrutura rateada pelas horas do orçamento: cada despesa fixa (${base}) ÷ ${fnum(R.hProd,1)} horas produtivas da oficina no mês = custo por hora, × horas deste orçamento. Base de meses e horas produtivas: Custeio por setor.</p>`; }
+function odLucroAlvo(O){ const v=O.lucroAlvo; return (v!=null&&v!==''?+v:+cuCfg().lucro||0)/100; }
+function odCmpCalc(O,c){ const R=fixosRef(), imp=R.imp||0, luc=odLucroAlvo(O), d=1-imp-luc;
+  const A={preco:c.total, imp:c.total*imp}; A.liq=A.preco-c.custo-A.imp;
+  const B={preco:d>0&&c.custo>0?Math.round(c.custo/d*100)/100:NaN}; B.imp=B.preco*imp; B.liq=B.preco-c.custo-B.imp;
+  return {R, imp, luc, d, A, B}; }
+function odCmpHTML(O,c){ if(!(c.custo>0)) return '<p class="note">Lance materiais e horas nos setores para comparar os preços.</p>';
+  const K=odCmpCalc(O,c), A=K.A, B=K.B, ok=isFinite(B.preco);
+  const p=(v,b)=>b>0&&isFinite(v)?`<span class="cell-sub" style="margin-left:6px">${pct(v/b)}</span>`:'';
+  const dif=(a,b,inv)=>{ if(!isFinite(a)||!isFinite(b)) return '—'; const x=b-a; return Math.abs(x)<0.005?'igual':`<span class="${(inv?-x:x)<0?'neg-t':'pos-t'}">${x>0?'+':'−'}${brl(Math.abs(x))}</span>`; };
+  const ln=(t,a,b,d,cls)=>`<tr class="${cls||''}"><td>${t}</td><td class="r">${a}</td><td class="r">${b}</td><td class="r">${d}</td></tr>`;
+  let rows='';
+  rows+=ln('<b>Preço ao cliente</b>', `<b>${brl(A.preco)}</b>`, ok?`<b>${brl(B.preco)}</b>`:'—', dif(A.preco,B.preco), 'grp');
+  rows+=ln('Multiplicador equivalente (preço ÷ custo)', fnum(A.preco/c.custo,2)+'×', ok?fnum(B.preco/c.custo,2)+'×':'—', '');
+  rows+=ln('(−) Custo do orçamento (materiais + estrutura)', brl(c.custo)+p(c.custo,A.preco), ok?brl(c.custo)+p(c.custo,B.preco):'—', '');
+  rows+=ln(`(−) Impostos e taxas (${pct(K.imp)})`, brl(A.imp), ok?brl(B.imp):'—', '');
+  rows+=ln('<b>(=) Margem líquida</b>', `<b class="${A.liq<0?'neg-t':'pos-t'}">${brl(A.liq)}</b>${p(A.liq,A.preco)}`, ok?`<b class="${B.liq<0?'neg-t':'pos-t'}">${brl(B.liq)}</b>${p(B.liq,B.preco)}`:'—', dif(A.liq,B.liq), 'tot liq');
+  const aviso=!ok?`<div class="warnbox" style="margin-top:8px">Impostos (${pct(K.imp)}) + lucro desejado (${pct(K.luc)}) somam 100% ou mais do preço: não existe preço que entregue esse lucro. Reduza o lucro desejado.</div>`:'';
+  const trav=O.status==='aprovado';
+  const btn=ok&&!trav&&Math.abs(B.preco-A.preco)>=0.01?`<button type="button" class="btn sm" data-act="odAplicaAlvo" style="margin-top:8px">Usar o preço por impostos + lucro (${brl(B.preco)}) neste orçamento</button>`:'';
+  return `<div class="tscroll"><table class="t od-comp-t"><thead><tr><th></th><th class="r">Pelo multiplicador (atual)</th><th class="r">Por impostos + lucro</th><th class="r">Diferença</th></tr></thead><tbody>${rows}</tbody></table></div>${aviso}${btn}
+    <p class="note" style="margin:6px 0 0">Preço por impostos + lucro = custo ÷ (1 − impostos ${pct(K.imp)} − lucro ${pct(K.luc)})${ok?` = ${brl(c.custo)} ÷ ${pct(K.d)}`:''}. Impostos: ${K.R.impInformado?'% informado no Custeio':'média das deduções da receita dos meses de referência (para fixar um %, use Custeio › Preço)'}. O lucro desejado é guardado neste orçamento; o padrão vem do Custeio.</p>`; }
+ACT.odAplicaAlvo=()=>{ const O=F.odEd; if(!O||O.status==='aprovado') return; const c=odCalc(O), K=odCmpCalc(O,c); if(!isFinite(K.B.preco)||!(c.custo>0)) return;
+  const m=K.B.preco/c.custo; OD_SET.forEach(s=>{ const x=O.setores[s.k]; if(x){ x.mult=Math.round(m*10000)/10000; x.preco=0; } });
+  render(); toast('Multiplicador de '+fnum(m,2)+'× aplicado a todos os setores'); };
 function odAtualizar(){ const O=F.odEd; if(!O || !$('#odTotal')) return; const c=odCalc(O);
   OD_SET.forEach(s=>{ const x=O.setores[s.k], r=c[s.k];
     x.itens.forEach((it,i)=>{ const t=$('#odt_'+s.k+'_'+i); if(t) t.textContent=(+it.qtd||0)*(+it.custo||0)?brl((+it.qtd||0)*(+it.custo||0)):'—'; });
     $('#od_'+s.k+'_mat').textContent=brl(r.mat); $('#od_'+s.k+'_mo').textContent=brl(r.mo); $('#od_'+s.k+'_custo').textContent=brl(r.custo); $('#od_'+s.k+'_preco').textContent=brl(r.preco);
     const m=$('#od_'+s.k+'_marg'); if(m) m.textContent=r.preco>0?`margem ${brl(r.margem)} · ${pct(r.mp)}${r.manual&&r.custo>0?' · mult. '+fnum(r.preco/r.custo,2):''}`:''; });
-  const cp=$('#odComp'); if(cp) cp.innerHTML=odCompHTML(O,c);
+  const cp=$('#odComp'); if(cp) cp.innerHTML=odCompHTML(O,c); const cm=$('#odCmp'); if(cm) cm.innerHTML=odCmpHTML(O,c);
   $('#odTotal').textContent=brl(c.total); $('#odDet').textContent=OD_SET.map(s=>s.nome+' '+brl(c[s.k].preco)).join('  +  ')+(c.total>0?`   ·   custo ${brl(c.custo)} · margem ${pct(c.mp)}`:'');
   $('#odNumTop').textContent=O.numero||'—'; $('#odOrcTop').textContent=O.orcamentista||'—'; $('#odResumo').value=odResumo(O);
   const es=$('#odEstado'); if(es){ const ok=O.id&&F.odSalvo===odSnap(O); es.textContent=!O.id?'Ainda não salvo':ok?'Salvo':'Alterações não salvas'; es.classList.toggle('ok',!!ok); } }
