@@ -163,7 +163,7 @@ input.n{text-align:right}
 .cu-ro{min-height:40px;display:flex;align-items:center;padding:0 10px;border:1px dashed var(--line);border-radius:8px;font-family:var(--f-num);color:var(--muted)}
 .cu-fixo{display:flex;flex-direction:column;gap:2px;padding:6px 12px;border-left:3px solid var(--accent);background:var(--surface-2);border-radius:6px}
 .cu-fixo small{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}.cu-fixo b{font-family:var(--f-num);font-size:20px;font-weight:500}
-.od-comp-t td{padding:7px 10px} .od-comp-t tr.grp td{background:var(--surface-2)} .od-comp-t tr.tot td{border-top:2px solid var(--line)}
+.od-comp-t td{padding:7px 10px} .od-comp-t tr.grp td{background:var(--surface-2)} .od-comp-t tr.tot td{border-top:2px solid var(--line)} .od-comp-t tr.liq td{background:var(--accent-soft)} .pos-t{color:var(--pos)}
 .cu-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
 .cu-set{display:flex;flex-direction:column;gap:14px}
 .cu-set-h h2{font-size:22px}
@@ -2555,7 +2555,7 @@ REL_EXP.rel_pagar=()=>expRL('P'); REL_EXP.rel_receber=()=>expRL('R');
 
 /* ======================= CUSTEIO POR SETOR (custo hora) ======================= */
 /* Custos fixos do ERP (classificações tratadas como fixas no ponto de equilíbrio), rateados entre os dois setores e divididos pelas horas de trabalho. */
-const CU_DEF={mesesRef:2, base:'erp', fixoInf:0, rateio:'horas', pct_prep:40, pct_acab:30, pct_pol:15, pct_hig:15, dias:22, horas:8.5, pes:2, prod:100, lucro:15, mcBase:'erp', varInf:40};
+const CU_DEF={mesesRef:2, impInf:0, base:'erp', fixoInf:0, rateio:'horas', pct_prep:40, pct_acab:30, pct_pol:15, pct_hig:15, dias:22, horas:8.5, pes:2, prod:100, lucro:15, mcBase:'erp', varInf:40};
 const CU_FOLGA=0.05; /* margem mínima que precisa sobrar para cobrir o fixo (5% do preço) */
 /* Os 4 setores de serviço (mesmas chaves do orçamento detalhado) */
 const CU_SET=[{k:'prep', nome:'Preparação'},{k:'acab', nome:'Acabamento'},{k:'pol', nome:'Polimento'},{k:'hig', nome:'Higienização'}];
@@ -2600,12 +2600,14 @@ function fixosRef(){ const C=cuCfg(), N=Math.min(3,Math.max(1,Math.round(+C.mese
   for(let tent=0; tent<12 && meses.length<N; tent++){ if(m<0){ m=11; y--; }
     const V=valoresPorConta(y,'comp'); let tot=0; const linha={};
     ORDEM.filter(sc=>SECOES[sc].nat==='P').forEach(sc=>gruposDe(sc).forEach(g=>g.contas.forEach(c=>{ const k=classeDe(c,g); if(!k || T[k]!=='F') return; const v=(V[c.id]||[])[m]||0; if(v){ linha[c.id]={v, nome:c.nome, grupo:g.nome, classe:k}; tot+=v; } })));
-    if(tot>0){ meses.push({y,m,tot}); Object.entries(linha).forEach(([id,x])=>{ const o=porConta[id]=porConta[id]||{id, nome:x.nome, grupo:x.grupo, classe:x.classe, soma:0}; o.soma+=x.v; }); }
+    let rec=0, ded=0; gruposDe('receita').forEach(g=>g.contas.forEach(c=>rec+=(V[c.id]||[])[m]||0)); gruposDe('deducoes').forEach(g=>g.contas.forEach(c=>ded+=(V[c.id]||[])[m]||0));
+    if(tot>0){ meses.push({y,m,tot,rec,ded}); Object.entries(linha).forEach(([id,x])=>{ const o=porConta[id]=porConta[id]||{id, nome:x.nome, grupo:x.grupo, classe:x.classe, soma:0}; o.soma+=x.v; }); }
     m--; }
   const n=meses.length||1, contas=Object.values(porConta).map(o=>Object.assign(o,{media:o.soma/n})).sort((a,b)=>b.media-a.media);
   let total=contas.reduce((a,o)=>a+o.media,0), inf=false;
   if(C.base==='inf' && parseNum(C.fixoInf)>0){ total=parseNum(C.fixoInf); inf=true; }
-  return {N, meses, contas, total, inf, hProd, ch:hProd?total/hProd:0, rotulo:meses.length?meses.slice().reverse().map(x=>MES3[x.m]+'/'+String(x.y).slice(2)).join(', '):'' }; }
+  const recR=meses.reduce((a,x)=>a+x.rec,0), dedR=meses.reduce((a,x)=>a+x.ded,0), impERP=recR>0?dedR/recR:0, impInf=parseNum(C.impInf), imp=impInf>0?impInf/100:impERP;
+  return {N, meses, contas, total, inf, hProd, imp, impERP, impInformado:impInf>0, ch:hProd?total/hProd:0, rotulo:meses.length?meses.slice().reverse().map(x=>MES3[x.m]+'/'+String(x.y).slice(2)).join(', '):'' }; }
 function cuHoraRef(){ try{ return fixosRef().ch; }catch(e){ return 0; } }
 
 function vCusteio(){
@@ -2641,7 +2643,8 @@ function vCusteio(){
       <div class="rp-dt cu-grp"><span class="rp-dl">Preço</span><div class="f"><label>Custos variáveis</label><div class="chips" role="group" aria-label="Custos variáveis"><button type="button" data-act="cuMc" data-v="erp" aria-pressed="${C.mcBase!=='inf'}">Do ERP</button><button type="button" data-act="cuMc" data-v="inf" aria-pressed="${C.mcBase==='inf'}">Informar %</button></div></div>
         ${C.mcBase==='inf'?num('varInf','% do faturamento','%',120):`<div class="f" style="flex:0 1 auto"><label>% do faturamento</label><div class="cu-ro">${pct(1-X.mcERP)}</div></div>`}
         <div class="f" style="flex:0 1 auto"><label>Margem de contribuição</label><div class="cu-ro" style="color:var(--accent);border-color:var(--accent)">${pct(X.mc)}</div></div>
-        ${num('lucro','Lucro desejado','%',110)}</div>
+        ${num('lucro','Lucro desejado','%',110)}
+        <div class="f cu-in" style="flex:0 1 190px"><label for="cu_impInf">Impostos e taxas na venda</label><div class="cu-suf"><input id="cu_impInf" class="n" inputmode="decimal" value="${parseNum(C.impInf)?String(C.impInf).replace('.',','):''}" placeholder="${(()=>{ const r=fixosRef(); return r.impERP?'ERP: '+fnum(r.impERP*100,1):'ex.: 10'; })()}" data-chg="cu" data-k="impInf"><span>%</span></div></div></div>
     </div>
   </div>
   ${X.aviso?`<div class="warnbox">${esc(X.aviso)}</div>`:''}
@@ -3063,6 +3066,9 @@ function odCompHTML(O,c){ const R=fixosRef(), H=OD_SET.reduce((a,s)=>a+(+((O.set
   rows+=lin('<b>Custo total do orçamento</b>', `<b>${brl(c.custo)}</b>`, '', 'tot');
   rows+=lin('Preço ao cliente', brl(c.total), OD_SET.filter(s=>c[s.k].preco).map(s=>esc(s.nome)+' '+brl(c[s.k].preco)).join(' · '));
   rows+=lin(`<b>Margem (preço − custo)</b>`, `<b class="${c.margem<0?'neg-t':''}">${brl(c.margem)}</b>${c.total>0?`<span class="cell-sub" style="margin-left:6px">${pct(c.mp)}</span>`:''}`, 'antes de impostos e taxas sobre a venda', 'tot');
+  const imp=c.total*R.imp, liq=c.margem-imp;
+  rows+=lin(`(−) Impostos e taxas sobre a venda`, brl(imp)+(c.total>0?`<span class="cell-sub" style="margin-left:6px">${pct(R.imp)}</span>`:''), R.impInformado?'percentual informado no Custeio':R.imp>0?`média das deduções da receita (impostos, taxas) dos meses de referência: ${pct(R.imp)} do faturamento`:'sem deduções lançadas nos meses de referência: informe o % no Custeio');
+  rows+=lin(`<b>(=) Margem líquida do orçamento</b>`, `<b class="${liq<0?'neg-t':'pos-t'}">${brl(liq)}</b>${c.total>0?`<span class="cell-sub" style="margin-left:6px">${pct(liq/c.total)}</span>`:''}`, 'o que sobra de lucro depois de pagar materiais, estrutura, impostos e taxas', 'tot liq');
   const base=R.inf?'custo fixo informado no Custeio':R.meses.length?`média de ${R.meses.length===1?'1 mês':R.meses.length+' meses'} fechados (${esc(R.rotulo)})`:'sem meses fechados com custo fixo lançado';
   return `<div class="tscroll"><table class="t od-comp-t"><tbody>${rows}</tbody></table></div>
     <p class="note" style="margin:6px 0 0">Estrutura rateada pelas horas do orçamento: cada despesa fixa (${base}) ÷ ${fnum(R.hProd,1)} horas produtivas da oficina no mês = custo por hora, × horas deste orçamento. Base de meses e horas produtivas: Custeio por setor.</p>`; }
