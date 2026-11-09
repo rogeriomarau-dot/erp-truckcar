@@ -834,10 +834,10 @@ function vPainel(){
   return `
   <div class="bar"><div class="row" style="align-items:flex-end">
     <div class="f"><label>Ver por</label><div class="chips" role="group" aria-label="Ver por"><button type="button" data-act="pModo" data-v="mes" aria-pressed="${!per}">Mês</button><button type="button" data-act="pModo" data-v="per" aria-pressed="${per}">Período</button></div></div>
-    ${per?`<div class="f"><label for="pDe">De</label><input id="pDe" type="month" value="${F.painelDe}" data-chg="painelPer" data-k="painelDe"></div>
-    <div class="f"><label for="pAte">Até</label><input id="pAte" type="month" value="${F.painelAte}" data-chg="painelPer" data-k="painelAte"></div>
+    ${per?`${ymSel('pDe','De','painelDe')}
+    ${ymSel('pAte','Até','painelAte')}
     <div class="chips" role="group" aria-label="Atalhos"><button type="button" data-act="pAtalho" data-v="ano">Este ano</button><button type="button" data-act="pAtalho" data-v="12m">Últimos 12 meses</button><button type="button" data-act="pAtalho" data-v="tri">Último trimestre</button></div>`
-    :`<div class="f"><label for="pMes">Mês de competência</label><input id="pMes" type="month" value="${ym}" data-chg="painelMes"></div>`}
+    :`${ymSel('pMes','Mês de competência','painelMes')}`}
   </div></div>
   <div class="tiles">
     <div class="tile pos"><small>Receitas · ${perTxt}</small><b>${brl(rec)}</b><span>por competência</span></div>
@@ -863,6 +863,15 @@ function vPainel(){
     </tbody></table></div>` : `<p class="note">Nenhuma conta em aberto.</p>`}
   </div>`;
 }
+function ymSel(id,lbl,key){ const v=F[key]||hoje().slice(0,7), y=+v.slice(0,4), m=+v.slice(5,7)-1, hy=+hoje().slice(0,4);
+  const anos=[]; for(let a=Math.min(y,hy-2); a<=Math.max(y,hy+1); a++) anos.push(a);
+  return `<div class="f"><label for="${id}">${lbl}</label><div class="row" style="gap:6px;flex-wrap:nowrap"><select id="${id}" style="width:auto;min-width:130px" aria-label="${lbl}: mês" data-chg="painelYM" data-k="${key}" data-p="m">${MESES.map((t,i)=>`<option value="${i}"${i===m?' selected':''}>${t}</option>`).join('')}</select><select style="width:auto;min-width:88px" aria-label="${lbl}: ano" data-chg="painelYM" data-k="${key}" data-p="y">${anos.map(a=>`<option value="${a}"${a===y?' selected':''}>${a}</option>`).join('')}</select></div></div>`; }
+CHG.painelYM=el=>{ const k=el.dataset.k, v=F[k]||hoje().slice(0,7); let y=+v.slice(0,4), m=+v.slice(5,7)-1;
+  if(el.dataset.p==='m') m=+el.value; else y=+el.value;
+  F[k]=y+'-'+pad(m+1);
+  if(k==='painelDe' && F.painelAte<F.painelDe) F.painelAte=F.painelDe;
+  if(k==='painelAte' && F.painelDe>F.painelAte) F.painelDe=F.painelAte;
+  render(); };
 CHG.painelMes=el=>{ if(el.value){ F.painelMes=el.value; render(); } };
 CHG.painelPer=el=>{ if(el.value){ F[el.dataset.k]=el.value; render(); } };
 ACT.pModo=el=>{ F.painelModo=el.dataset.v; render(); };
