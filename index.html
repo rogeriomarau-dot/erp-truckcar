@@ -2554,114 +2554,141 @@ REL_EXP.rel_pagar=()=>expRL('P'); REL_EXP.rel_receber=()=>expRL('R');
 
 /* ======================= CUSTEIO POR SETOR (custo hora) ======================= */
 /* Custos fixos do ERP (classificações tratadas como fixas no ponto de equilíbrio), rateados entre os dois setores e divididos pelas horas de trabalho. */
-const CU_DEF={base:'erp', fixoInf:0, rateio:'manual', pctA:56.11, dias:22, horas:8.5, pesA:1, pesB:1, prod:100, lucro:15, mcBase:'erp', varInf:40};
+const CU_DEF={base:'erp', fixoInf:0, rateio:'horas', pct_prep:40, pct_acab:30, pct_pol:15, pct_hig:15, dias:22, horas:8.5, pes:2, prod:100, lucro:15, mcBase:'erp', varInf:40};
 const CU_FOLGA=0.05; /* margem mínima que precisa sobrar para cobrir o fixo (5% do preço) */
-const CU_SET=[{k:'A', nome:'Funilaria e pintura', rec:/PREPAR/, sub:'receita: Preparação'},{k:'B', nome:'Acabamento', rec:/ACABAM/, sub:'receita: Acabamento'}];
+/* Os 4 setores de serviço (mesmas chaves do orçamento detalhado) */
+const CU_SET=[{k:'prep', nome:'Preparação'},{k:'acab', nome:'Acabamento'},{k:'pol', nome:'Polimento'},{k:'hig', nome:'Higienização'}];
+const CU_RAT={horas:'Pelas horas dos orçamentos aprovados', fat:'Pelo faturamento', manual:'Percentual fixo'};
 F.cuAno=new Date().getFullYear(); F.cuP=Object.assign(novoPer(),{tipo:'mes'}); F.cuPasso=false;
-function cuCfg(){ return Object.assign({},CU_DEF,S.cfg.custeio||{}); }
-function setorPadrao(nome){ const n=norm(nome); if(/PREPAR|FUNIL|CHAPE|PINTUR|DESMONT|MONTAG/.test(n)) return 'A'; if(/ACABAM|POLIM|HIGIEN|LAVAG|ESTETIC/.test(n)) return 'B'; return ''; }
-function setorDaConta(c){ const m=cuCfg().recSetor||{}; return (c.id in m)? m[c.id] : setorPadrao(c.nome); }
-function receitaSetores(ano,m0,m1){ const V=valoresPorConta(ano,'comp'), out={A:0,B:0,N:0,semSetor:[]};
+function cuCfg(){ const c=Object.assign({},CU_DEF,S.cfg.custeio||{});
+  if(c.pes===undefined || (S.cfg.custeio && S.cfg.custeio.pes===undefined && (S.cfg.custeio.pesA||S.cfg.custeio.pesB))) c.pes=Math.max(1,(+c.pesA||0)+(+c.pesB||0))||CU_DEF.pes;
+  if(S.cfg.custeio && !('rateio4' in S.cfg.custeio)) c.rateio='horas';
+  return c; }
+function setorPadrao(nome){ const n=norm(nome); if(/PREPAR|FUNIL|CHAPE|PINTUR|DESMONT|MONTAG/.test(n)) return 'prep'; if(/ACABAM/.test(n)) return 'acab'; if(/POLIM/.test(n)) return 'pol'; if(/HIGIEN|LAVAG/.test(n)) return 'hig'; return ''; }
+function setorDaConta(c){ const m=cuCfg().recSetor||{}; if(c.id in m){ const v=m[c.id]; return v==='A'?'prep':v==='B'?'acab':v; } return setorPadrao(c.nome); }
+const SET_KEYS=CU_SET.map(s=>s.k), zSet=()=>Object.fromEntries(SET_KEYS.map(k=>[k,0]));
+function receitaSetores(ano,m0,m1){ const V=valoresPorConta(ano,'comp'), out=Object.assign(zSet(),{N:0,semSetor:[]});
   gruposDe('receita').forEach(g=>g.contas.forEach(c=>{ let v=0; for(let i=m0;i<=m1;i++) v+=(V[c.id]||[])[i]||0; const k=setorDaConta(c);
-    if(k==='A'||k==='B') out[k]+=v; else if(v){ out.N+=v; out.semSetor.push({nome:c.nome, v}); } })); return out; }
+    if(SET_KEYS.includes(k)) out[k]+=v; else if(v){ out.N+=v; out.semSetor.push({nome:c.nome, v}); } })); return out; }
 const contasDoSetor=k=>gruposDe('receita').flatMap(g=>g.contas).filter(c=>c.ativo!==false && setorDaConta(c)===k).map(c=>c.nome);
-function calcCusteio(){
-  const C=cuCfg(), ano=F.cuAno, [m0,m1]=faixa(F.cuP), R=calcPE(ano,m0,m1), T=R.T;
-  const meses=Math.max(1,R.nMov), fixoERP=R.cf/meses, fixo=C.base==='inf'?parseNum(C.fixoInf):fixoERP;
-  const rec=receitaSetores(ano,m0,m1), recT=rec.A+rec.B;
-  const ratFat=C.rateio==='fat'&&rec.A>0&&rec.B>0, ratAviso=C.rateio==='fat'&&!ratFat; let pA=ratFat? rec.A/recT : parseNum(C.pctA)/100; pA=Math.min(1,Math.max(0,pA));
-  const pct={A:pA,B:1-pA}, mcERP=R.mcp, mc=C.mcBase==='inf'?1-Math.min(100,Math.max(0,parseNum(C.varInf)))/100:R.mcp, lucro=parseNum(C.lucro)/100, prod=Math.min(100,Math.max(1,parseNum(C.prod)))/100;
-  const hMes=parseNum(C.dias)*parseNum(C.horas);
-  const set=CU_SET.map(s=>{ const pes=Math.max(1,parseNum(C['pes'+s.k])||1), cf=fixo*pct[s.k], hDisp=hMes*pes, hProd=hDisp*prod, ch=hProd?cf/hProd:0;
-    const precoMin=mc>0?ch/mc:null, precoLucro=mc-lucro>=CU_FOLGA?ch/(mc-lucro):null, recM=rec[s.k]/meses;
-    return Object.assign({},s,{pes, pct:pct[s.k], cf, hDisp, hProd, ch, chPessoa:ch, precoMin, precoLucro, rec:recM, cob:cf?recM*Math.max(0,mc)/cf:null}); });
-  return {C, R, T, recN:rec.N, semSetor:rec.semSetor, mcERP, ratAviso, inviavel:mc-lucro<CU_FOLGA, ano, m0, m1, meses, fixo, fixoERP, hMes, prod, mc, lucro, set, rotulo:rotuloPer(F.cuP,ano)};
+/* Horas por setor dos orçamentos aprovados no período (orçamento simples: Preparação e Acabamento; detalhado: os 4 setores) */
+function horasOrcSetor(o,k){ const x=(o.setores||{})[k]; if(!x) return 0; return o.tipo==='det'? (+x.horas||0) : (+x.qt||0); }
+function horasSetores(ano,m0,m1){ const out=Object.assign(zSet(),{n:0}); S.orcamentos.forEach(o=>{ if(o.status!=='aprovado') return; const d=String(o.aprovadoEm||o.data||'').slice(0,10); if(+d.slice(0,4)!==ano) return; const m=+d.slice(5,7)-1; if(m<m0||m>m1) return;
+  let tem=false; SET_KEYS.forEach(k=>{ const h=horasOrcSetor(o,k); if(h){ out[k]+=h; tem=true; } }); if(tem) out.n++; }); return out; }
+function calcCusteio(ano, m0, m1){
+  const C=cuCfg(); if(ano===undefined){ ano=F.cuAno; [m0,m1]=faixa(F.cuP); }
+  const R=calcPE(ano,m0,m1), T=R.T, meses=Math.max(1,R.nMov), fixoERP=R.cf/meses, fixo=C.base==='inf'?parseNum(C.fixoInf):fixoERP;
+  const rec=receitaSetores(ano,m0,m1), recT=SET_KEYS.reduce((a,k)=>a+rec[k],0), hrs=horasSetores(ano,m0,m1), hT=SET_KEYS.reduce((a,k)=>a+hrs[k],0);
+  let usado=C.rateio, aviso='';
+  if(usado==='horas' && !(hT>0)){ usado=recT>0?'fat':'manual'; aviso=`Não há orçamentos aprovados com horas em ${rotuloPer(F.cuP,ano)}. O rateio está usando ${usado==='fat'?'o faturamento':'o percentual fixo'} até haver horas lançadas nos orçamentos.`; }
+  if(usado==='fat' && !(recT>0)){ usado='manual'; aviso=aviso||`Não há faturamento lançado por setor no período. O rateio está usando o percentual fixo.`; }
+  const pm=SET_KEYS.map(k=>Math.max(0,parseNum(C['pct_'+k]))), pmT=pm.reduce((a,b)=>a+b,0)||1;
+  const pct={}; SET_KEYS.forEach((k,i)=>{ pct[k]= usado==='horas'? hrs[k]/hT : usado==='fat'? rec[k]/recT : pm[i]/pmT; });
+  const mcERP=R.mcp, mc=C.mcBase==='inf'?1-Math.min(100,Math.max(0,parseNum(C.varInf)))/100:R.mcp, lucro=parseNum(C.lucro)/100, prod=Math.min(100,Math.max(1,parseNum(C.prod)))/100;
+  const pes=Math.max(1,Math.round(parseNum(C.pes))||1), hMes=parseNum(C.dias)*parseNum(C.horas), hCap=hMes*pes, hProd=hCap*prod;
+  const ch=hProd?fixo/hProd:0, precoMin=mc>0&&ch?ch/mc:null, precoLucro=ch&&mc-lucro>=CU_FOLGA?ch/(mc-lucro):null;
+  const hTm=hT/meses, ocup=hProd?hTm/hProd:null;
+  const set=CU_SET.map(s=>{ const cf=fixo*pct[s.k], recM=rec[s.k]/meses, hM=hrs[s.k]/meses;
+    return Object.assign({},s,{pct:pct[s.k], cf, rec:recM, horas:hM, cob:cf?recM*Math.max(0,mc)/cf:null, absorvido:hM*ch}); });
+  return {C, R, T, recN:rec.N, semSetor:rec.semSetor, usado, aviso, nOrc:hrs.n, mcERP, inviavel:mc-lucro<CU_FOLGA, ano, m0, m1, meses, fixo, fixoERP, hMes, pes, hCap, hProd, prod, ch, precoMin, precoLucro, hT:hTm, ocup, mc, lucro, set, rotulo:rotuloPer({tipo:'per',de:m0,ate:m1},ano)};
 }
+/* Custo fixo por hora de referência para o orçamento: média dos últimos 3 meses fechados (ou o valor informado no Custeio) */
+function cuHoraRef(){ try{ const d=new Date(); let y=d.getFullYear(), m=d.getMonth()-1; const vs=[];
+  for(let i=0;i<3;i++){ if(m<0){ m=11; y--; } const X=calcCusteio(y,m,m); if(X.ch>0) vs.push(X.ch); m--; }
+  if(!vs.length){ const X=calcCusteio(); return X.ch>0?X.ch:0; } return vs.reduce((a,b)=>a+b,0)/vs.length; }catch(e){ return 0; } }
 
 function vCusteio(){
   const X=calcCusteio(), C=X.C, fks=Object.keys(CLASSES).filter(k=>X.T[k]==='F');
-  const num=(k,lbl,suf,w,step)=>`<div class="f cu-in" style="flex:0 1 ${w||120}px"><label for="cu_${k}">${lbl}</label><div class="cu-suf"><input id="cu_${k}" class="n" inputmode="decimal" value="${String(C[k]).replace('.',',')}" data-chg="cu" data-k="${k}"><span>${suf||''}</span></div></div>`;
-  const semFixo=X.fixo<=0;
-  const cards=X.set.map(s=>`<div class="card cu-set">
-      <div class="cu-set-h"><div><h2>${esc(s.nome)}</h2><span class="hint">${(()=>{ const ns=contasDoSetor(s.k); return ns.length?'receita: '+esc(ns.join(', ')):'sem conta de receita ligada'; })()} · ${fnum(s.pct*100,2)}% do custo fixo</span></div></div>
-      <div class="cu-big"><small>Custo fixo por hora${s.pes>1?' (por pessoa)':''}</small><b>${s.ch?brl(s.ch):'—'}</b></div>
-      <dl class="cu-dl">
-        <div><dt>Custo fixo do setor no mês</dt><dd>${brl(s.cf)}</dd></div>
-        <div><dt>Horas no mês</dt><dd>${fnum(s.hDisp,1)} h <span class="hint">${s.pes>1?fnum(X.hMes,1)+' h × '+s.pes+' pessoas':''}</span></dd></div>
-        ${X.prod<1?`<div><dt>Horas produtivas (${pct(X.prod)})</dt><dd>${fnum(s.hProd,1)} h</dd></div>`:''}
-      </dl>
-      <div class="cu-preco">
-        <div><small>Preço mínimo da hora</small><b>${s.precoMin?brl(s.precoMin):'—'}</b><span>cobre fixo + variáveis, lucro zero</span></div>
-        <div class="on"><small>Preço da hora com ${pct(X.lucro)} de lucro</small>${s.precoLucro?`<b>${brl(s.precoLucro)}</b><span>sugestão para o orçamento</span>`:`<b class="neg-t" style="font-size:16px">Inviável</b><span>o lucro de ${pct(X.lucro)} consome toda a margem de contribuição (${pct(X.mc)}) e não sobra para o custo fixo</span>`}</div>
-      </div>
-      <div class="cu-cob"><div class="cu-cob-h"><span>Faturamento do setor ${X.meses>1?'(média/mês)':'no mês'}</span><b>${brl(s.rec)}</b></div>
-        ${s.cob!==null?`<div class="tr"><i style="width:${Math.min(100,s.cob*100).toFixed(1)}%;background:${s.cob>=1?'var(--pos)':'var(--warn)'}"></i></div>
-        <span class="hint">${s.rec?`a margem desse faturamento cobre <b>${pct(s.cob)}</b> do custo fixo do setor`:'sem faturamento lançado no período'}</span>`:''}</div>
-    </div>`).join('');
-  const passo=X.set.map(s=>`<li><b>${esc(s.nome)}:</b> ${brl(X.fixo)} × ${pct(s.pct)} = <b>${brl(s.cf)}</b> → ${brl(s.cf)} ÷ ${fnum(s.hProd,1)} h${s.pes>1||X.prod<1?` <span class="hint">(${fnum(parseNum(C.dias),1)} dias × ${fnum(parseNum(C.horas),2)} h${s.pes>1?' × '+s.pes+' pessoas':''}${X.prod<1?' × '+pct(X.prod):''})</span>`:` <span class="hint">(${fnum(parseNum(C.dias),1)} dias × ${fnum(parseNum(C.horas),2)} h)</span>`} = <b>${brl(s.ch)}/h</b>${s.precoMin?` → ÷ margem de contribuição ${pct(X.mc)} = <b>${brl(s.precoMin)}/h</b> mínimo`:''}</li>`).join('');
+  const num=(k,lbl,suf,w)=>`<div class="f cu-in" style="flex:0 1 ${w||120}px"><label for="cu_${k}">${lbl}</label><div class="cu-suf"><input id="cu_${k}" class="n" inputmode="decimal" value="${String(C[k]).replace('.',',')}" data-chg="cu" data-k="${k}"><span>${suf||''}</span></div></div>`;
+  const semFixo=X.fixo<=0, pmT=SET_KEYS.reduce((a,k)=>a+Math.max(0,parseNum(C['pct_'+k])),0);
+  const linhas=X.set.map(s=>`<tr><td><div class="cell-main">${esc(s.nome)}</div><div class="cell-sub">${(()=>{ const ns=contasDoSetor(s.k); return ns.length?'receita: '+esc(ns.join(', ')):'sem conta de receita ligada'; })()}</div></td>
+      <td class="r num">${s.horas?fnum(s.horas,1)+' h':'—'}</td><td class="r num"><b>${pct(s.pct)}</b></td><td class="r">${brl(s.cf)}</td><td class="r">${brl(s.rec)}</td>
+      <td style="min-width:150px">${s.cob!==null&&s.rec?`<div class="tr" style="height:8px;background:var(--surface-2);border-radius:99px;overflow:hidden"><i style="display:block;height:100%;width:${Math.min(100,s.cob*100).toFixed(1)}%;background:${s.cob>=1?'var(--pos)':'var(--warn)'}"></i></div><span class="cell-sub">margem cobre ${pct(s.cob)} do fixo</span>`:'<span class="cell-sub">sem faturamento</span>'}</td></tr>`).join('');
+  const tot=k=>X.set.reduce((a,s)=>a+s[k],0);
+  const passo=`<li><b>Custo fixo do mês:</b> ${brl(X.fixo)} ${C.base==='inf'?'(informado)':`(${fks.map(k=>CLASSE_CURTA[k]).join(' + ')} lançados${X.meses>1?', média de '+X.meses+' meses':''})`}</li>
+    <li><b>Horas produtivas da oficina:</b> ${fnum(parseNum(C.dias),1)} dias × ${fnum(parseNum(C.horas),2)} h × ${X.pes} ${X.pes>1?'pessoas':'pessoa'}${X.prod<1?' × '+pct(X.prod):''} = <b>${fnum(X.hProd,1)} h</b></li>
+    <li><b>Custo fixo por hora:</b> ${brl(X.fixo)} ÷ ${fnum(X.hProd,1)} h = <b>${brl(X.ch)}/h</b> (igual para os 4 setores, porque a equipe e a estrutura são compartilhadas)</li>
+    <li><b>Rateio entre os setores:</b> ${esc(CU_RAT[X.usado])} → ${X.set.map(s=>esc(s.nome)+' '+pct(s.pct)).join(' · ')}</li>`;
   return `<div class="bar"><div class="row">${anoSelect('cuAnoSel',X.ano,'cuAno')}${periodoUI('cuP')}</div>${botoesExp('custeio')}</div>
   <div class="card cu-par">
     <div class="cu-par-row">
       <div class="f" style="flex:0 1 auto"><label>Custo fixo mensal</label><div class="chips" role="group" aria-label="Base do custo fixo"><button type="button" data-act="cuBase" data-v="erp" aria-pressed="${C.base==='erp'}">Lançado no ERP</button><button type="button" data-act="cuBase" data-v="inf" aria-pressed="${C.base==='inf'}">Informar valor</button></div></div>
-      ${C.base==='inf'?`<div class="f cu-in" style="flex:0 1 170px"><label for="cu_fixoInf">Valor mensal (R$)</label><input id="cu_fixoInf" class="n" inputmode="decimal" value="${fmoney(parseNum(C.fixoInf))}" data-chg="cu" data-k="fixoInf"></div>`:`<div class="cu-fixo"><small>${esc(X.rotulo)}${X.meses>1?' · média de '+X.meses+' meses':''}</small><b>${brl(X.fixoERP)}</b><span class="hint">${fks.map(k=>CLASSE_CURTA[k]).join(' + ')} (como no ponto de equilíbrio)</span></div>`}
+      ${C.base==='inf'?`<div class="f cu-in" style="flex:0 1 170px"><label for="cu_fixoInf">Valor mensal (R$)</label><input id="cu_fixoInf" class="n" inputmode="decimal" value="${fmoney(parseNum(C.fixoInf))}" data-chg="cu" data-k="fixoInf"></div>`:`<div class="cu-fixo"><small>${esc(X.rotulo)}${X.meses>1?' · média de '+X.meses+' meses':''}</small><b>${brl(X.fixoERP)}</b><span class="hint">${fks.map(k=>CLASSE_CURTA[k]).join(' + ')}: aluguel, água, luz, telefone, salários… (como no ponto de equilíbrio)</span></div>`}
     </div>
     <div class="cu-par-row">
-      <div class="rp-dt cu-grp"><span class="rp-dl">Horas</span>${num('dias','Dias no mês','dias',105)}${num('horas','Horas por dia','h',105)}${num('prod','Produtividade','%',105)}</div>
-      <div class="rp-dt cu-grp"><span class="rp-dl">Pessoas</span>${num('pesA','Funilaria e pintura','',120)}${num('pesB','Acabamento','',105)}</div>
+      <div class="rp-dt cu-grp"><span class="rp-dl">Horas</span>${num('dias','Dias no mês','dias',105)}${num('horas','Horas por dia','h',105)}${num('pes','Pessoas na produção','',140)}${num('prod','Produtividade','%',105)}</div>
     </div>
     <div class="cu-par-row">
-      <div class="rp-dt cu-grp" style="flex-wrap:wrap"><span class="rp-dl">Receitas</span>${gruposDe('receita').flatMap(g=>g.contas).filter(c=>c.ativo!==false).map(c=>{ const k=setorDaConta(c); return `<div class="f" style="flex:0 1 190px"><label for="cuRS_${c.id}">${esc(c.nome)}</label><select id="cuRS_${c.id}" data-chg="cuRecSet" data-c="${c.id}"><option value="A"${k==='A'?' selected':''}>Funilaria e pintura</option><option value="B"${k==='B'?' selected':''}>Acabamento</option><option value=""${!k?' selected':''}>Não entra nos setores</option></select></div>`; }).join('')}</div>
+      <div class="rp-dt cu-grp" style="flex-wrap:wrap"><span class="rp-dl">Receitas</span>${gruposDe('receita').flatMap(g=>g.contas).filter(c=>c.ativo!==false).map(c=>{ const k=setorDaConta(c); return `<div class="f" style="flex:0 1 170px"><label for="cuRS_${c.id}">${esc(c.nome)}</label><select id="cuRS_${c.id}" data-chg="cuRecSet" data-c="${c.id}">${CU_SET.map(s=>`<option value="${s.k}"${k===s.k?' selected':''}>${s.nome}</option>`).join('')}<option value=""${!k?' selected':''}>Não entra nos setores</option></select></div>`; }).join('')}</div>
     </div>
     <div class="cu-par-row">
-      <div class="rp-dt cu-grp"><span class="rp-dl">Rateio</span><div class="f"><label>Forma</label><div class="chips" role="group" aria-label="Rateio"><button type="button" data-act="cuRat" data-v="manual" aria-pressed="${C.rateio==='manual'}">Percentual fixo</button><button type="button" data-act="cuRat" data-v="fat" aria-pressed="${C.rateio==='fat'}">Pelo faturamento</button></div></div>
-        ${C.rateio==='manual'||X.ratAviso?num('pctA','Funilaria e pintura','%',120)+`<div class="f" style="flex:0 1 105px"><label>Acabamento</label><div class="cu-ro">${fnum(100-parseNum(C.pctA),2)} %</div></div>`:`<span class="hint" style="align-self:center">${X.set.map(s=>esc(s.nome)+' '+fnum(s.pct*100,2)+'%').join(' · ')}</span>`}</div>
+      <div class="rp-dt cu-grp" style="flex-wrap:wrap"><span class="rp-dl">Rateio</span><div class="f"><label>Forma</label><div class="chips" role="group" aria-label="Rateio">${Object.keys(CU_RAT).map(k=>`<button type="button" data-act="cuRat" data-v="${k}" aria-pressed="${C.rateio===k}">${k==='horas'?'Pelas horas':k==='fat'?'Pelo faturamento':'Percentual fixo'}</button>`).join('')}</div></div>
+        ${C.rateio==='manual'||X.usado==='manual'?CU_SET.map(s=>num('pct_'+s.k,s.nome,'%',105)).join('')+`<span class="hint" style="align-self:center">${Math.abs(pmT-100)>0.01?'soma '+fnum(pmT,2)+'%: o ERP proporcionaliza':''}</span>`:''}</div>
+    </div>
+    <div class="cu-par-row">
       <div class="rp-dt cu-grp"><span class="rp-dl">Preço</span><div class="f"><label>Custos variáveis</label><div class="chips" role="group" aria-label="Custos variáveis"><button type="button" data-act="cuMc" data-v="erp" aria-pressed="${C.mcBase!=='inf'}">Do ERP</button><button type="button" data-act="cuMc" data-v="inf" aria-pressed="${C.mcBase==='inf'}">Informar %</button></div></div>
         ${C.mcBase==='inf'?num('varInf','% do faturamento','%',120):`<div class="f" style="flex:0 1 auto"><label>% do faturamento</label><div class="cu-ro">${pct(1-X.mcERP)}</div></div>`}
         <div class="f" style="flex:0 1 auto"><label>Margem de contribuição</label><div class="cu-ro" style="color:var(--accent);border-color:var(--accent)">${pct(X.mc)}</div></div>
         ${num('lucro','Lucro desejado','%',110)}</div>
     </div>
   </div>
-  ${X.ratAviso?`<div class="warnbox">Rateio <b>pelo faturamento</b> precisa de faturamento lançado nos dois setores no período. Como ${X.set.filter(s=>!s.rec).map(s=>esc(s.nome)).join(' e ')} não tem faturamento em ${esc(X.rotulo)}, o ERP está usando o <b>percentual fixo</b> (${fnum(parseNum(X.C.pctA),2)}% / ${fnum(100-parseNum(X.C.pctA),2)}%).</div>`:''}
+  ${X.aviso?`<div class="warnbox">${esc(X.aviso)}</div>`:''}
   ${X.inviavel&&!semFixo?`<div class="warnbox">Com custos variáveis de <b>${pct(1-X.mc)}</b> do faturamento, a margem de contribuição é <b>${pct(X.mc)}</b>. O lucro desejado (<b>${pct(X.lucro)}</b>) precisa ser menor que ela, deixando pelo menos ${pct(CU_FOLGA)} para cobrir o custo fixo. Reduza o lucro desejado ou revise os custos variáveis${X.C.mcBase!=='inf'?' (num mês com pouco faturamento lançado, o % de variáveis do ERP pode estar distorcido; use "Informar %")':''}.</div>`:''}
   ${semFixo?`<div class="warnbox">Não há custos fixos ${C.base==='inf'?'informados':'lançados em '+esc(X.rotulo)}. ${C.base==='inf'?'Informe o valor do custo fixo mensal.':'Lance as despesas fixas em Contas a pagar ou use "Informar valor" para simular.'}</div>`:''}
-  ${X.recN>0.004?`<div class="warnbox">${brl(X.recN)} de receita em ${esc(X.rotulo)} não está ligada a nenhum setor (${X.semSetor.map(x=>esc(x.nome)+' '+brl(x.v)).join(', ')}). Escolha o setor de cada conta em <b>Receitas</b>, acima, para entrar no faturamento do setor.</div>`:''}
-  <div class="cu-grid">${cards}</div>
+  ${X.recN>0.004?`<div class="warnbox">${brl(X.recN)} de receita em ${esc(X.rotulo)} não está ligada a nenhum setor (${X.semSetor.map(x=>esc(x.nome)+' '+brl(x.v)).join(', ')}). Escolha o setor de cada conta em <b>Receitas</b>, acima, ou passe a lançar os serviços pelo Orçamento › Aprovar, que já separa por setor.</div>`:''}
+  <div class="cu-grid">
+    <div class="card cu-set">
+      <div class="cu-set-h"><div><h2>Custo fixo por hora</h2><span class="hint">oficina inteira · vale para os 4 setores</span></div></div>
+      <div class="cu-big"><small>Custo fixo por hora produtiva</small><b>${X.ch?brl(X.ch):'—'}</b></div>
+      <dl class="cu-dl">
+        <div><dt>Custo fixo no mês</dt><dd>${brl(X.fixo)}</dd></div>
+        <div><dt>Horas produtivas no mês</dt><dd>${fnum(X.hProd,1)} h <span class="hint">${fnum(X.hMes,1)} h × ${X.pes} ${X.pes>1?'pessoas':'pessoa'}${X.prod<1?' × '+pct(X.prod):''}</span></dd></div>
+        <div><dt>Horas vendidas (orçamentos aprovados)</dt><dd>${X.hT?fnum(X.hT,1)+' h':'—'} ${X.ocup!==null&&X.hT?`<span class="hint">ocupação ${pct(X.ocup)}</span>`:''}</dd></div>
+      </dl>
+      <div class="cu-preco">
+        <div><small>Preço mínimo da hora</small><b>${X.precoMin?brl(X.precoMin):'—'}</b><span>cobre fixo + variáveis, lucro zero</span></div>
+        <div class="on"><small>Preço da hora com ${pct(X.lucro)} de lucro</small>${X.precoLucro?`<b>${brl(X.precoLucro)}</b><span>sugestão para o orçamento</span>`:X.ch?`<b class="neg-t" style="font-size:16px">Inviável</b><span>o lucro de ${pct(X.lucro)} consome toda a margem de contribuição (${pct(X.mc)})</span>`:'<b>—</b>'}</div>
+      </div>
+    </div>
+    <div class="card cu-set" style="grid-column:span 2;min-width:0">
+      <div class="cu-set-h"><div><h2>Rateio por setor</h2><span class="hint">${esc(CU_RAT[X.usado])}${X.usado==='horas'?' · '+X.nOrc+' orçamento(s) aprovado(s) no período':''}${X.meses>1?' · valores por mês (média)':''}</span></div></div>
+      <div class="tscroll"><table class="t"><thead><tr><th>Setor</th><th class="r">Horas vendidas</th><th class="r">% do fixo</th><th class="r">Custo fixo do setor</th><th class="r">Faturamento</th><th>Cobertura</th></tr></thead>
+        <tbody>${linhas}</tbody><tfoot><tr><td>Total</td><td class="r num">${tot('horas')?fnum(tot('horas'),1)+' h':'—'}</td><td class="r num">100%</td><td class="r">${brl(tot('cf'))}</td><td class="r">${brl(tot('rec'))}</td><td></td></tr></tfoot></table></div>
+      <p class="note" style="margin:0">Com a equipe trabalhando em mais de um setor, o custo fixo por hora é um só. O rateio mostra quanto da estrutura (aluguel, água, luz, telefone, salários…) cada setor carrega e se a margem do faturamento dele paga essa parte.</p>
+    </div>
+  </div>
   <div class="card"><button type="button" class="cu-tg" data-act="cuPasso" aria-expanded="${F.cuPasso}">Como o cálculo é feito</button>
     ${F.cuPasso?`<ol class="cu-ol">${passo}</ol>
-    <p class="note">• <b>Custo fixo por hora</b> = custo fixo do setor ÷ horas do mês (dias × horas por dia × pessoas × produtividade). Divida uma vez só: as horas do mês já incluem as horas de cada dia.<br>
-    • <b>Preço mínimo da hora</b> = custo fixo por hora ÷ margem de contribuição (${pct(X.mc)}, do ponto de equilíbrio). Cobre o fixo e os custos variáveis, impostos e taxas de cada serviço.<br>
-    • <b>Preço com lucro</b> = custo fixo por hora ÷ (margem de contribuição − lucro desejado). Exemplo: margem 60% e lucro 15% → divide por 45%. Se o lucro chegar perto da margem, o divisor vai a zero e o preço explode; por isso o ERP marca como inviável.<br>
-    • <b>Margem de contribuição</b> = 100% − custos variáveis (materiais, impostos, taxas) em % do faturamento. "Do ERP" usa os lançamentos do período; "Informar %" usa o percentual que você digitar.<br>
-    • <b>Produtividade</b>: parte do tempo em que a equipe realmente executa serviço (sem preparação, espera e retrabalho). 100% = todas as horas.</p>`:''}</div>`;
+    <p class="note">• <b>Custo fixo por hora</b> = custo fixo do mês ÷ horas produtivas (dias × horas por dia × pessoas na produção × produtividade). É o que cada hora de serviço precisa pagar da estrutura: aluguel, água, luz, telefone, salários e demais fixos.<br>
+    • <b>No orçamento detalhado</b>, horas do setor × custo fixo por hora = parte da estrutura que aquele serviço absorve.<br>
+    • <b>Rateio pelas horas</b>: cada setor carrega o fixo na proporção das horas dos orçamentos aprovados no período (simples: Preparação e Acabamento; detalhado: os 4 setores). Sem orçamentos aprovados, o ERP usa o faturamento ou o percentual fixo.<br>
+    • <b>Preço mínimo da hora</b> = custo fixo por hora ÷ margem de contribuição (${pct(X.mc)}). <b>Preço com lucro</b> = custo fixo por hora ÷ (margem − lucro desejado).<br>
+    • <b>Ocupação</b> = horas vendidas ÷ horas produtivas: quanto da capacidade da oficina está sendo vendida.</p>`:''}</div>`;
 }
-const cuSalvar=(k,v)=>{ S.cfg.custeio=Object.assign(cuCfg(),{[k]:v}); salvarDoc('geral'); render(); };
-CHG.cu=el=>{ const k=el.dataset.k; let v=parseNum(el.value); if(k==='pctA') v=Math.min(100,Math.max(0,v)); if(k==='pesA'||k==='pesB') v=Math.max(1,Math.round(v)||1); cuSalvar(k,v); };
+const cuSalvar=(k,v)=>{ S.cfg.custeio=Object.assign(cuCfg(),{[k]:v, rateio4:1}); if(k!=='rateio' && !('rateio' in (S.cfg.custeio||{}))) S.cfg.custeio.rateio='horas'; salvarDoc('geral'); render(); };
+CHG.cu=el=>{ const k=el.dataset.k; let v=parseNum(el.value); if(k.startsWith('pct_')) v=Math.min(100,Math.max(0,v)); if(k==='pes') v=Math.max(1,Math.round(v)||1); cuSalvar(k,v); };
 CHG.cuAno=el=>{ F.cuAno=+el.value; render(); };
 CHG.cuRecSet=el=>{ const m=Object.assign({}, cuCfg().recSetor||{}, {[el.dataset.c]:el.value}); cuSalvar('recSetor', m); };
 ACT.cuBase=el=>cuSalvar('base',el.dataset.v); ACT.cuMc=el=>cuSalvar('mcBase',el.dataset.v); ACT.cuRat=el=>cuSalvar('rateio',el.dataset.v);
 ACT.cuPasso=()=>{ F.cuPasso=!F.cuPasso; render(); };
 
-REL_EXP.custeio=()=>{ const X=calcCusteio(); if(X.fixo<=0) return {titulo:'Custeio por setor', cols:[], linhas:[]};
-  const L=[]; const lin=(d,a,b,t,e)=>L.push({v:[d,a,b,t===undefined?'':t], estilo:e||''});
-  const [A,B]=X.set, so=(f)=>f(A)+f(B);
-  lin('Rateio do custo fixo',pct(A.pct),pct(B.pct),'100%','grupo');
-  lin('Custo fixo do setor no mês (R$)',A.cf,B.cf,X.fixo);
-  lin('Pessoas no setor',String(A.pes),String(B.pes),String(A.pes+B.pes));
-  lin('Horas no mês',fnum(A.hDisp,1)+' h',fnum(B.hDisp,1)+' h',fnum(A.hDisp+B.hDisp,1)+' h');
-  if(X.prod<1) lin('Horas produtivas ('+pct(X.prod)+')',fnum(A.hProd,1)+' h',fnum(B.hProd,1)+' h',fnum(A.hProd+B.hProd,1)+' h');
-  lin('Custo fixo por hora (R$)',A.ch,B.ch,'','secao');
-  lin('Preço mínimo da hora (R$) · margem de contribuição '+pct(X.mc),A.precoMin??'—',B.precoMin??'—');
-  lin('Preço da hora com '+pct(X.lucro)+' de lucro (R$)',A.precoLucro??'Inviável',B.precoLucro??'Inviável','','total');
-  lin('Faturamento do setor'+(X.meses>1?' (média/mês)':'')+' (R$)',A.rec,B.rec,so(s=>s.rec),'grupo');
-  lin('Cobertura do custo fixo pela margem',A.cob===null?'':pct(A.cob),B.cob===null?'':pct(B.cob),'');
+REL_EXP.custeio=()=>{ const X=calcCusteio(); const L=[]; const lin=(v,e)=>L.push({v, estilo:e||''});
+  lin(['Custo fixo por hora (oficina)', X.ch||'', '', '', ''],'secao');
+  lin(['Preço mínimo da hora · margem de contribuição '+pct(X.mc), X.precoMin??'—','','',''],'');
+  lin(['Preço da hora com '+pct(X.lucro)+' de lucro', X.precoLucro??'Inviável','','',''],'total');
+  lin(['Rateio por setor ('+CU_RAT[X.usado].toLowerCase()+')','Horas vendidas','% do fixo','Custo fixo do setor','Faturamento'],'grupo');
+  X.set.forEach(s=>lin([s.nome, s.horas?fnum(s.horas,1)+' h':'', pct(s.pct), s.cf, s.rec],''));
+  lin(['Total', X.hT?fnum(X.hT,1)+' h':'', '100%', X.set.reduce((a,s)=>a+s.cf,0), X.set.reduce((a,s)=>a+s.rec,0)],'total');
   return {titulo:'Custeio por setor - custo hora', arquivo:'Custeio_por_setor_'+X.rotulo.replace(/[º\/ ]+/g,'_'),
-    filtros:['Período: '+X.rotulo,'Custo fixo mensal: '+brl(X.fixo)+(X.C.base==='inf'?' (informado)':' (lançado no ERP'+(X.meses>1?', média de '+X.meses+' meses':'')+')'),'Rateio: '+(X.C.rateio==='fat'?'pelo faturamento':'percentual fixo'),'Custos variáveis: '+pct(1-X.mc)+(X.C.mcBase==='inf'?' (informado)':' (do ERP)')+' · margem de contribuição '+pct(X.mc),'Lucro desejado: '+pct(X.lucro),fnum(parseNum(X.C.dias),1)+' dias × '+fnum(parseNum(X.C.horas),2)+' h = '+fnum(X.hMes,1)+' h/mês por pessoa','Produtividade '+pct(X.prod)],
-    cols:[{t:'Indicador'},{t:'Funilaria e pintura',tipo:'moeda',w:40},{t:'Acabamento',tipo:'moeda',w:40},{t:'Total',tipo:'moeda',w:34}], linhas:L}; };
+    filtros:['Período: '+X.rotulo,'Custo fixo mensal: '+brl(X.fixo)+(X.C.base==='inf'?' (informado)':' (lançado no ERP'+(X.meses>1?', média de '+X.meses+' meses':'')+')'),'Horas produtivas: '+fnum(X.hProd,1)+' h ('+fnum(parseNum(X.C.dias),1)+' dias × '+fnum(parseNum(X.C.horas),2)+' h × '+X.pes+' pessoas × '+pct(X.prod)+')','Custos variáveis: '+pct(1-X.mc)+(X.C.mcBase==='inf'?' (informado)':' (do ERP)')+' · margem de contribuição '+pct(X.mc),'Lucro desejado: '+pct(X.lucro)],
+    cols:[{t:'Indicador'},{t:'Valor',tipo:'moeda',w:34},{t:'% do fixo',w:22},{t:'Custo fixo do setor',tipo:'moeda',w:36},{t:'Faturamento',tipo:'moeda',w:34}], linhas:L}; };
 
 
 /* ======================= ORÇAMENTOS (Preparação + Acabamento) ======================= */
 /* Preço do setor = (valor da hora × horas + material) × multiplicador. Aprovado vira conta a receber por setor. */
 const ORC_SET=[{k:'prep', nome:'Preparação', rec:/PREPAR/},{k:'acab', nome:'Acabamento', rec:/ACABAM/}];
+/* Orçamento detalhado: os 4 setores de serviço */
+const OD_SET=[{k:'prep', nome:'Preparação', rec:/PREPAR/},{k:'acab', nome:'Acabamento', rec:/ACABAM/},{k:'pol', nome:'Polimento', rec:/POLIM/},{k:'hig', nome:'Higienização', rec:/HIGIEN/}];
 const ORC_DEF={prep:{hora:37, qt:8, mat:680, mult:2.5}, acab:{hora:44, qt:8, mat:542, mult:2.5}};
 const ORC_ST={aberto:'Em aberto', aprovado:'Aprovado', recusado:'Recusado'};
 F.orcQ=''; F.orcSt='todos';
@@ -2765,7 +2792,7 @@ let oqConf=0; ACT.oqExcluir=b=>{ const O=F.orcEd; if(Date.now()-oqConf>4000){ oq
 /* Aprovação: um título a receber por setor com valor */
 const addDias=(iso,n)=>{ const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
 function aprovarOrc(O){
-  const c=orcCalc(O), setores=ORC_SET.filter(s=>c[s.k].preco>0), semConta=setores.filter(s=>!contaReceita(s.rec));
+  const c=orcCalc(O), setores=(O.tipo==='det'?OD_SET:ORC_SET).filter(s=>c[s.k].preco>0), semConta=setores.filter(s=>!contaReceita(s.rec));
   let modo='unico', n=1, parc=[];
   const comp0=O.data||hoje();
   const gerar=()=>{ const v1=mv('apVenc')||hoje(), intv=mv('apInt'), dias=parseInt(mv('apDias'),10)||15; n=Math.max(1,parseInt(mv('apParc'),10)||1);
@@ -2859,17 +2886,17 @@ const odSnap=O=>JSON.stringify([O.numero,O.data,O.validade,O.orcamentista,O.clie
 const odGet=(o,p)=>p.split('.').reduce((a,k)=>a==null?a:a[k],o);
 function odSet(o,p,v){ const ks=p.split('.'); let a=o; ks.slice(0,-1).forEach(k=>{ if(a[k]==null) a[k]={}; a=a[k]; }); a[ks[ks.length-1]]=v; }
 const odVeicTxt=O=>{ const v=O.vei||{}; return [v.placa, [v.marca,v.modelo].filter(Boolean).join(' ')].filter(Boolean).join(' · '); };
-function odHoraCusteio(k){ try{ const X=calcCusteio(), s=X.set[k==='prep'?0:1]; if(s && s.ch>0) return Math.round(s.ch*100)/100; }catch(e){} return 0; }
+function odHoraCusteio(k){ const h=cuHoraRef(); return h>0?Math.round(h*100)/100:0; }
 function odHoraPadrao(k){ const h=odHoraCusteio(k); if(h) return h; const P=orcPadrao(); return +(P[k]&&P[k].hora)||0; }
 const odCu=n=>!n?'':(Math.abs(n)>=1?fnum(Math.round(n*100)/100,2):fnum(n,4)); /* custo unitário na tela */
 const odItem=()=>({uid:uid(), insumoId:'', desc:'', qtd:0, un:'', custo:0});
 function odNovoObj(){ const P=orcPadrao(), set={};
-  ORC_SET.forEach(s=>{ set[s.k]={itens:[odItem(),odItem(),odItem()], hora:odHoraPadrao(s.k), horas:0, mult:+(P[s.k]&&P[s.k].mult)||2.5, preco:0}; });
+  OD_SET.forEach(s=>{ set[s.k]={itens:[odItem(),odItem(),odItem()], hora:odHoraPadrao(s.k), horas:0, mult:+(P[s.k]&&P[s.k].mult)||2.5, preco:0}; });
   return {tipo:'det', numero:orcNumProx(), data:hoje(), validade:15, status:'aberto', orcamentista:(USR&&USR.nome)||S.cfg.orcamentista||'',
     cliente:'', cli:{doc:'',contato:'',fone:'',email:'',cidade:''}, veiculo:'', vei:{placa:'',tipo:'Cavalo mecânico',marca:'',modelo:'',ano:'',cor:'',km:'',frota:''},
     servico:{descricao:'',prazo:'',pagamento:''}, obs:'', pdfItens:false, setores:set}; }
 function odCalc(o){ const r={}; let total=0, custoT=0;
-  ORC_SET.forEach(s=>{ const x=(o.setores||{})[s.k]||{itens:[]};
+  OD_SET.forEach(s=>{ const x=(o.setores||{})[s.k]||{itens:[]};
     const mat=(x.itens||[]).reduce((a,i)=>a+(+i.qtd||0)*(+i.custo||0),0), mo=(+x.hora||0)*(+x.horas||0), custo=Math.round((mat+mo)*100)/100;
     const calc=Math.round(custo*(+x.mult||0)*100)/100, manual=+x.preco>0, preco=manual?Math.round(+x.preco*100)/100:calc;
     r[s.k]={mat, mo, custo, calc, preco, manual, margem:preco-custo, mp:preco>0?(preco-custo)/preco:NaN}; total+=preco; custoT+=custo; });
@@ -2927,9 +2954,9 @@ function vOrcDet(){
         ${x.itens.map((it,i)=>odLinha(s.k,it,i,dis)).join('')}
       </div>
       <div class="od-matrow">${!trav?`<button type="button" class="btn sm" data-act="odAddItem" data-s="${s.k}">+ Adicionar material</button>`:'<span></span>'}<div class="oq-tot od-mt"><span>Materiais</span><b id="od_${s.k}_mat">—</b></div></div>
-      <div class="oq-lin"><div class="f"><label>Mão de obra</label>${hc&&Math.abs(hc-(+x.hora||0))>0.004&&!trav?`<button type="button" class="btn sm od-hc" data-act="odHoraCus" data-s="${s.k}">Usar custo do Custeio: ${brl(hc)}/h</button>`:`<span class="hint">${hc?'Custo da hora do Custeio por setor':'Custo da hora padrão'}</span>`}</div>
-        ${fl(p+'.hora','Custo da hora (R$)',num(p+'.hora',fmoneyIn(x.hora)))}${fl(p+'.horas','Horas',num(p+'.horas',x.horas?fnum(x.horas,2):'','placeholder="0"'))}
-        <div class="oq-tot"><span>Mão de obra</span><b id="od_${s.k}_mo">—</b></div></div>
+      <div class="oq-lin"><div class="f"><label>Mão de obra e estrutura</label>${hc&&Math.abs(hc-(+x.hora||0))>0.004&&!trav?`<button type="button" class="btn sm od-hc" data-act="odHoraCus" data-s="${s.k}">Usar custo do Custeio: ${brl(hc)}/h</button>`:`<span class="hint">${hc?'Custo fixo por hora do Custeio: salários, aluguel, água, luz, telefone…':'Custo da hora padrão'}</span>`}</div>
+        ${fl(p+'.hora','Custo da hora (R$)',num(p+'.hora',fmoneyIn(x.hora)))}${fl(p+'.horas','Horas do setor',num(p+'.horas',x.horas?fnum(x.horas,2):'','placeholder="0"'))}
+        <div class="oq-tot"><span>Mão de obra e estrutura</span><b id="od_${s.k}_mo">—</b></div></div>
       <div class="oq-sub"><span>Total (custo)</span><b id="od_${s.k}_custo">—</b></div>
       <div class="od-pin">${fl(p+'.mult','Multiplicador',num(p+'.mult',fnum(x.mult,2)))}${fl(p+'.preco','Preço final (opcional)',num(p+'.preco',x.preco?fmoneyIn(x.preco):'','placeholder="Usa o multiplicador"'))}</div>
       <div class="oq-preco"><small>Preço ${s.nome}</small><div class="od-pv"><b id="od_${s.k}_preco">—</b><span id="od_${s.k}_marg"></span></div></div>
@@ -2968,7 +2995,7 @@ function vOrcDet(){
     ${fl('servico.pagamento','Condição de pagamento',inp('servico.pagamento',SV.pagamento,'placeholder="Ex.: 50% na aprovação e 50% na entrega"'),'s3')}
   </div></section>
   <datalist id="odInsList">${odInsumos().map(i=>{ const p=odPrecoIns(i); return `<option value="${esc(i.descricao)}">${p.custo?brl(p.custo)+'/'+esc(p.un):'sem preço'}</option>`; }).join('')}</datalist>
-  <div class="od-setores">${ORC_SET.map(setor).join('')}</div>
+  <div class="od-setores">${OD_SET.map(setor).join('')}</div>
   <section class="card" aria-label="Observações"><div class="f"><label for="od_obs">Observações para o cliente (saem no PDF)</label><textarea id="od_obs" rows="3" data-inp="odIn" data-k="obs" placeholder="Garantia, itens não inclusos, peças fornecidas pelo cliente…"${dis}>${esc(O.obs||'')}</textarea></div>
     <label class="check" for="od_pdfItens"><input id="od_pdfItens" type="checkbox" data-chg="odIn" data-k="pdfItens"${O.pdfItens?' checked':''}${dis}> Listar os materiais no PDF (só descrição e quantidade, sem custos)</label></section>
   <section class="oq-total" aria-live="polite"><h2>Total do orçamento</h2><b id="odTotal">—</b><span class="oq-det" id="odDet"></span></section>
@@ -3004,14 +3031,14 @@ ACT.odSt=el=>{ F.odSt=el.dataset.v; render(); };
 
 function odResumo(O){ const c=odCalc(O), SV=O.servico||{};
   return ['*ORÇAMENTO DE SERVIÇO TRUCKCAR* · Nº '+O.numero, O.orcamentista?'Orçamentista: '+O.orcamentista:null, O.cliente?'Cliente: '+O.cliente:null, O.veiculo?'Veículo: '+O.veiculo:null, O.data?'Data: '+dataBR(O.data):null,
-    SV.descricao?'\n'+SV.descricao:null, '', ...ORC_SET.filter(s=>c[s.k].preco>0).map(s=>s.nome+': '+brl(c[s.k].preco)), '', '*Total: '+brl(c.total)+'*',
+    SV.descricao?'\n'+SV.descricao:null, '', ...OD_SET.filter(s=>c[s.k].preco>0).map(s=>s.nome+': '+brl(c[s.k].preco)), '', '*Total: '+brl(c.total)+'*',
     SV.prazo?'Prazo de execução: '+SV.prazo:null, SV.pagamento?'Pagamento: '+SV.pagamento:null, O.validade?'Validade: '+O.validade+' dias':null, O.obs?'\n'+O.obs:null].filter(x=>x!==null).join('\n'); }
 function odAtualizar(){ const O=F.odEd; if(!O || !$('#odTotal')) return; const c=odCalc(O);
-  ORC_SET.forEach(s=>{ const x=O.setores[s.k], r=c[s.k];
+  OD_SET.forEach(s=>{ const x=O.setores[s.k], r=c[s.k];
     x.itens.forEach((it,i)=>{ const t=$('#odt_'+s.k+'_'+i); if(t) t.textContent=(+it.qtd||0)*(+it.custo||0)?brl((+it.qtd||0)*(+it.custo||0)):'—'; });
     $('#od_'+s.k+'_mat').textContent=brl(r.mat); $('#od_'+s.k+'_mo').textContent=brl(r.mo); $('#od_'+s.k+'_custo').textContent=brl(r.custo); $('#od_'+s.k+'_preco').textContent=brl(r.preco);
     const m=$('#od_'+s.k+'_marg'); if(m) m.textContent=r.preco>0?`margem ${brl(r.margem)} · ${pct(r.mp)}${r.manual&&r.custo>0?' · mult. '+fnum(r.preco/r.custo,2):''}`:''; });
-  $('#odTotal').textContent=brl(c.total); $('#odDet').textContent=ORC_SET.map(s=>s.nome+' '+brl(c[s.k].preco)).join('  +  ')+(c.total>0?`   ·   custo ${brl(c.custo)} · margem ${pct(c.mp)}`:'');
+  $('#odTotal').textContent=brl(c.total); $('#odDet').textContent=OD_SET.map(s=>s.nome+' '+brl(c[s.k].preco)).join('  +  ')+(c.total>0?`   ·   custo ${brl(c.custo)} · margem ${pct(c.mp)}`:'');
   $('#odNumTop').textContent=O.numero||'—'; $('#odOrcTop').textContent=O.orcamentista||'—'; $('#odResumo').value=odResumo(O);
   const es=$('#odEstado'); if(es){ const ok=O.id&&F.odSalvo===odSnap(O); es.textContent=!O.id?'Ainda não salvo':ok?'Salvo':'Alterações não salvas'; es.classList.toggle('ok',!!ok); } }
 const _renderOd=render; render=function(){ _renderOd(); if(view==='orcamentos') odAtualizar(); };
@@ -3041,12 +3068,12 @@ ACT.odAddItem=el=>{ const k=el.dataset.s, x=F.odEd.setores[k]; x.itens.push(odIt
 ACT.odDelItem=el=>{ const x=F.odEd.setores[el.dataset.s]; x.itens.splice(+el.dataset.i,1); if(!x.itens.length) x.itens.push(odItem()); render(); };
 ACT.odHoraCus=el=>{ const k=el.dataset.s, h=odHoraCusteio(k); if(!h) return; F.odEd.setores[k].hora=h; render(); toast('Custo da hora atualizado pelo Custeio por setor'); };
 
-function odLimpo(O){ ORC_SET.forEach(s=>{ const x=O.setores[s.k]; x.itens=x.itens.filter(i=>String(i.desc||'').trim() || +i.qtd || +i.custo); }); O.veiculo=odVeicTxt(O); }
+function odLimpo(O){ OD_SET.forEach(s=>{ const x=O.setores[s.k]; x.itens=x.itens.filter(i=>String(i.desc||'').trim() || +i.qtd || +i.custo); }); O.veiculo=odVeicTxt(O); }
 function odSalvar(silencio){ const O=F.odEd; O.numero=String(O.numero||'').trim(); O.cliente=String(O.cliente||'').trim();
   if(!O.cliente){ toast('Informe o nome do cliente.'); const c=$('#od_cliente'); if(c) c.focus(); return false; }
   if(!O.numero){ toast('Informe o número do orçamento.'); return false; }
   if(S.orcamentos.some(x=>x.id!==O.id && x.numero===O.numero)){ if(!O.id){ O.numero=orcNumProx(); toast('Esse número já foi usado: o orçamento ficou com o Nº '+O.numero); } else { toast(`Já existe o orçamento nº ${O.numero}. Troque o número.`); return false; } }
-  odLimpo(O); const cp=clone(O); ORC_SET.forEach(s=>{ if(!O.setores[s.k].itens.length) O.setores[s.k].itens.push(odItem()); });
+  odLimpo(O); const cp=clone(O); OD_SET.forEach(s=>{ if(!O.setores[s.k].itens.length) O.setores[s.k].itens.push(odItem()); });
   if(!O.id){ O.id=uid(); cp.id=O.id; } touch(O); cp.atualizadoEm=O.atualizadoEm; cp.criadoEm=O.criadoEm;
   const i=S.orcamentos.findIndex(x=>x.id===O.id); if(i<0) S.orcamentos.push(cp); else S.orcamentos[i]=cp;
   salvarCol('orcamentos'); F.odSalvo=odSnap(O); if(!silencio) toast(`Orçamento Nº ${O.numero} salvo`); return true; }
@@ -3055,10 +3082,10 @@ ACT.odPdf=async b=>{ const O=F.odEd; if(O.status!=='aprovado'){ if(!odSalvar(tru
 ACT.odWhats=()=>{ const ta=$('#odResumo'); ta.value=odResumo(F.odEd); const fb=()=>{ ta.focus(); ta.select(); toast('Selecionei o resumo: copie com Ctrl+C'); };
   try{ navigator.clipboard.writeText(ta.value).then(()=>toast('Resumo copiado. Cole no WhatsApp.'),fb); }catch(e){ fb(); } };
 ACT.odNovo=()=>{ F.odEd=odNovoObj(); F.odSalvo=''; F.odAnt=false; render(); window.scrollTo({top:0}); const c=$('#od_cliente'); if(c) c.focus(); toast('Novo orçamento detalhado Nº '+F.odEd.numero); };
-ACT.odDup=()=>{ const n=clone(F.odEd); ['id','lancIds','aprovadoEm','criadoEm','atualizadoEm'].forEach(k=>delete n[k]); n.numero=orcNumProx(); n.status='aberto'; n.data=hoje(); ORC_SET.forEach(s=>n.setores[s.k].itens.forEach(i=>i.uid=uid()));
+ACT.odDup=()=>{ const n=clone(F.odEd); ['id','lancIds','aprovadoEm','criadoEm','atualizadoEm'].forEach(k=>delete n[k]); n.numero=orcNumProx(); n.status='aberto'; n.data=hoje(); OD_SET.forEach(s=>{ const x=n.setores[s.k]=n.setores[s.k]||{itens:[odItem()],hora:odHoraPadrao(s.k),horas:0,mult:2.5,preco:0}; x.itens.forEach(i=>i.uid=uid()); });
   F.odEd=n; F.odSalvo=''; render(); window.scrollTo({top:0}); toast('Cópia criada como Nº '+n.numero+'. Salve para guardar.'); };
 ACT.odAntT=()=>{ F.odAnt=!F.odAnt; render(); if(F.odAnt){ const p=document.querySelector('.oq-ant'); if(p) p.scrollIntoView({behavior:'smooth',block:'start'}); } };
-ACT.odAbrir=el=>{ const o=S.orcamentos.find(x=>x.id===el.dataset.id); if(!o) return; F.odEd=clone(o); ORC_SET.forEach(s=>{ const x=F.odEd.setores[s.k]=F.odEd.setores[s.k]||{itens:[],hora:0,horas:0,mult:2.5,preco:0}; if(!x.itens.length) x.itens.push(odItem()); });
+ACT.odAbrir=el=>{ const o=S.orcamentos.find(x=>x.id===el.dataset.id); if(!o) return; F.odEd=clone(o); OD_SET.forEach(s=>{ const x=F.odEd.setores[s.k]=F.odEd.setores[s.k]||{itens:[],hora:0,horas:0,mult:2.5,preco:0}; if(!x.itens.length) x.itens.push(odItem()); });
   F.odSalvo=odSnap(F.odEd); F.odAnt=false; render(); window.scrollTo({top:0}); toast('Orçamento Nº '+o.numero+' aberto'); };
 ACT.odAprovar=()=>{ const O=F.odEd; if(!String(O.cliente||'').trim()){ toast('Informe o nome do cliente.'); return; } if(!(odCalc(O).total>0)){ toast('O orçamento está sem valor.'); return; } if(!odSalvar(true)) return; aprovarOrc(O); };
 const odStatus=(st,msg)=>{ F.odEd.status=st; if(odSalvar(true)){ render(); toast(msg); } };
@@ -3098,7 +3125,7 @@ async function odPDF(O,b){
     if(SV.descricao){ doc.setTextColor(...TEAL); doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.text('DESCRIÇÃO DO SERVIÇO',M,y); y+=5.5;
       doc.setTextColor(...NAVY); doc.setFont('helvetica','normal'); doc.setFontSize(10.5); const ls=doc.splitTextToSize(SV.descricao,W-2*M); ls.forEach(l=>{ novaPag(5); doc.text(l,M,y); y+=5; }); y+=4; }
     /* Tabela de serviços por setor */
-    const setores=ORC_SET.filter(s=>c[s.k].preco>0);
+    const setores=OD_SET.filter(s=>c[s.k].preco>0);
     const corpo=setores.map(s=>{ let t=s.nome; if(O.pdfItens){ const its=O.setores[s.k].itens.filter(i=>String(i.desc||'').trim()); if(its.length) t+='\n'+its.map(i=>'•  '+i.desc+(+i.qtd?'  ('+fnum(i.qtd,3)+(i.un?' '+i.un:'')+')':'')).join('\n'); } return [t, brl(c[s.k].preco)]; });
     novaPag(30);
     doc.autoTable({ startY:y, margin:{left:M, right:M, bottom:22}, theme:'plain', head:[['SERVIÇO','VALOR']], body:corpo,
