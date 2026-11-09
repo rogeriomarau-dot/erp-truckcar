@@ -2626,7 +2626,7 @@ function vCusteio(){
   <div class="card cu-par">
     <div class="cu-par-row">
       <div class="f" style="flex:0 1 auto"><label>Custo fixo mensal</label><div class="chips" role="group" aria-label="Base do custo fixo"><button type="button" data-act="cuBase" data-v="erp" aria-pressed="${C.base==='erp'}">Lançado no ERP</button><button type="button" data-act="cuBase" data-v="inf" aria-pressed="${C.base==='inf'}">Informar valor</button></div></div>
-      <div class="f" style="flex:0 1 auto"><label>Base para os orçamentos</label><div class="chips" role="group" aria-label="Meses de referência">${[2,3].map(n=>`<button type="button" data-act="cuRef" data-v="${n}" aria-pressed="${(+C.mesesRef||2)===n}">Últimos ${n} meses</button>`).join('')}</div><span class="hint">${(()=>{ const r=fixosRef(); return r.meses.length?`${esc(r.rotulo)} · ${brl(r.ch)}/h`:'sem meses fechados com custo fixo'; })()}</span></div>
+      <div class="f" style="flex:0 1 auto"><label>Base para os orçamentos</label><div class="chips" role="group" aria-label="Meses de referência">${[2,3].map(n=>`<button type="button" data-act="cuRef" data-v="${n}" aria-pressed="${(+C.mesesRef||2)===n}">Últimos ${n} meses</button>`).join('')}</div><span class="hint">${(()=>{ const r=fixosRef(); return r.meses.length?`${esc(r.rotulo)} · regime de competência · média ${brl(r.total)}/mês ÷ ${fnum(r.hProd,1)} h = <b>${brl(r.ch)}/h</b>`:'sem meses fechados com custo fixo'; })()}</span></div>
       ${C.base==='inf'?`<div class="f cu-in" style="flex:0 1 170px"><label for="cu_fixoInf">Valor mensal (R$)</label><input id="cu_fixoInf" class="n" inputmode="decimal" value="${fmoney(parseNum(C.fixoInf))}" data-chg="cu" data-k="fixoInf"></div>`:`<div class="cu-fixo"><small>${esc(X.rotulo)}${X.meses>1?' · média de '+X.meses+' meses':''}</small><b>${brl(X.fixoERP)}</b><span class="hint">${fks.map(k=>CLASSE_CURTA[k]).join(' + ')}: aluguel, água, luz, telefone, salários… (como no ponto de equilíbrio)</span></div>`}
     </div>
     <div class="cu-par-row">
@@ -3061,6 +3061,7 @@ function odCompHTML(O,c){ const R=fixosRef(), H=OD_SET.reduce((a,s)=>a+(+((O.set
   let rows='';
   rows+=lin('<b>Materiais</b>', brl(mat)+pctT(mat), OD_SET.filter(s=>c[s.k].mat).map(s=>esc(s.nome)+' '+brl(c[s.k].mat)).join(' · '), 'grp');
   rows+=lin(`<b>Mão de obra e estrutura</b>`, brl(mo)+pctT(mo), H?`${fnum(H,2)} h no total (${OD_SET.filter(s=>+((O.setores[s.k]||{}).horas)).map(s=>esc(s.nome)+' '+fnum(+O.setores[s.k].horas,2)+' h').join(' · ')})`:'informe as horas de cada setor', 'grp');
+  if(H>0 && R.ch>0 && !R.inf) rows+=lin('<span class="cell-sub">Base do custo da hora</span>', `<span class="cell-sub">${brl(R.ch)}/h</span>`, `despesas fixas pelo regime de competência, média de ${esc(R.rotulo)}: ${brl(R.total)}/mês ÷ ${fnum(R.hProd,1)} h produtivas`);
   if(H>0 && R.ch>0){
     if(R.inf) rows+=lin('Custo fixo mensal informado no Custeio', brl(mo), `${brl(R.total)} ÷ ${fnum(R.hProd,1)} h produtivas = ${brl(R.ch)}/h × ${fnum(H,2)} h`);
     else R.contas.forEach(o=>{ const v=o.media/R.hProd*H*fat; if(v>=0.005) rows+=lin(`<span style="padding-left:14px;display:inline-block">${esc(o.grupo)} › ${esc(o.nome)}</span>`, brl(v), `<span style="padding-left:14px;display:inline-block">média ${brl(o.media)}/mês ÷ ${fnum(R.hProd,1)} h = ${odCu(o.media/R.hProd)}/h × ${fnum(H,2)} h</span>`); });
@@ -3072,7 +3073,7 @@ function odCompHTML(O,c){ const R=fixosRef(), H=OD_SET.reduce((a,s)=>a+(+((O.set
   const imp=c.total*R.imp, liq=c.margem-imp;
   rows+=lin(`(−) Impostos e taxas sobre a venda`, brl(imp)+(c.total>0?`<span class="cell-sub" style="margin-left:6px">${pct(R.imp)}</span>`:''), R.impInformado?'percentual informado no Custeio':R.imp>0?`média das deduções da receita (impostos, taxas) dos meses de referência: ${pct(R.imp)} do faturamento`:'sem deduções lançadas nos meses de referência: informe o % no Custeio');
   rows+=lin(`<b>(=) Margem líquida do orçamento</b>`, `<b class="${liq<0?'neg-t':'pos-t'}">${brl(liq)}</b>${c.total>0?`<span class="cell-sub" style="margin-left:6px">${pct(liq/c.total)}</span>`:''}`, 'o que sobra de lucro depois de pagar materiais, estrutura, impostos e taxas', 'tot liq');
-  const base=R.inf?'custo fixo informado no Custeio':R.meses.length?`média de ${R.meses.length===1?'1 mês':R.meses.length+' meses'} fechados (${esc(R.rotulo)})`:'sem meses fechados com custo fixo lançado';
+  const base=R.inf?'custo fixo informado no Custeio':R.meses.length?`média de ${R.meses.length===1?'1 mês':R.meses.length+' meses'} fechados (${esc(R.rotulo)}), regime de competência: ${brl(R.total)}/mês`:'sem meses fechados com custo fixo lançado';
   return `<div class="tscroll"><table class="t od-comp-t"><tbody>${rows}</tbody></table></div>
     <p class="note" style="margin:6px 0 0">Estrutura rateada pelas horas do orçamento: cada despesa fixa (${base}) ÷ ${fnum(R.hProd,1)} horas produtivas da oficina no mês = custo por hora, × horas deste orçamento. Base de meses e horas produtivas: Custeio por setor.</p>`; }
 function odLucroAlvo(O){ const v=O.lucroAlvo; return (v!=null&&v!==''?+v:+cuCfg().lucro||0)/100; }
