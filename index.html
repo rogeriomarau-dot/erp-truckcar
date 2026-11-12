@@ -652,14 +652,28 @@ function erroDB(e){ const c=e&&e.code;
   else if(c==='permission-denied'){ toast('O servidor recusou a gravação: seu usuário não tem permissão para isso.'); }
   else if(c==='resource-exhausted'){ toast('Limite diário do plano gratuito atingido. Tente de novo mais tarde.'); }
   else if(c==='unavailable'){ /* offline: o Firestore reenvia sozinho */ } }
+/* Controle de gravações pendentes (evita que um item excluído "volte"):
+   PEND = itens criados/alterados aqui que ainda não chegaram ao servidor;
+   DELP = itens excluídos aqui cuja exclusão ainda não foi confirmada.
+   Um item que só existe neste aparelho só é mantido se estiver em PEND; os demais foram excluídos em outro lugar. */
+const PEND={}, DELP={};
+COLS.forEach(c=>{ PEND[c]=new Map((LS.get('pend.'+c,[])||[]).map(id=>[id,1])); DELP[c]=new Set(LS.get('delp.'+c,[])||[]); });
+function gravaCtl(col){ LS.set('pend.'+col,[...PEND[col].keys()]); LS.set('delp.'+col,[...DELP[col]]); }
 function syncCol(col){ if(!DB) return; const atuais=new Set();
-  S[col].forEach(o=>{ atuais.add(o.id); const j=JSON.stringify(o); if(syncMap[col].get(o.id)!==j){ syncMap[col].set(o.id,j); fila(col+'/'+o.id, ()=>DB.collection(col).doc(o.id).set(JSON.parse(j))); } });
-  [...syncMap[col].keys()].forEach(id=>{ if(!atuais.has(id)){ syncMap[col].delete(id); fila(col+'/'+id, ()=>DB.collection(col).doc(id).delete()); } }); }
+  S[col].forEach(o=>{ atuais.add(o.id); const j=JSON.stringify(o); if(syncMap[col].get(o.id)!==j){ syncMap[col].set(o.id,j); DELP[col].delete(o.id);
+    PEND[col].set(o.id,(PEND[col].get(o.id)||0)+1); gravaCtl(col);
+    fila(col+'/'+o.id, ()=>DB.collection(col).doc(o.id).set(JSON.parse(j)).then(()=>{ const n=(PEND[col].get(o.id)||1)-1; if(n>0) PEND[col].set(o.id,n); else PEND[col].delete(o.id); gravaCtl(col); })); } });
+  [...syncMap[col].keys()].forEach(id=>{ if(!atuais.has(id)){ syncMap[col].delete(id); PEND[col].delete(id); DELP[col].add(id); gravaCtl(col);
+    fila(col+'/'+id, ()=>DB.collection(col).doc(id).delete().then(()=>{ DELP[col].delete(id); gravaCtl(col); })); } }); }
 function aoReceberCol(col,snap){
   const server=new Map(); snap.docs.forEach(d=>{ const o=d.data(); if(o && o.id) server.set(o.id, clone(o)); });
   const nova=[], vistos=new Set();
-  S[col].forEach(o=>{ const sv=server.get(o.id); if(sv){ vistos.add(o.id); nova.push(((o.atualizadoEm||'')>(sv.atualizadoEm||''))?o:sv); } else if(!syncMap[col].has(o.id)) nova.push(o); });
-  server.forEach((sv,id)=>{ if(!vistos.has(id)) nova.push(sv); });
+  DELP[col].forEach(id=>{ if(!server.has(id)) DELP[col].delete(id); });
+  S[col].forEach(o=>{ const sv=server.get(o.id); if(sv && DELP[col].has(o.id)) return;
+    if(sv){ vistos.add(o.id); nova.push(((o.atualizadoEm||'')>(sv.atualizadoEm||''))?o:sv); }
+    else if(PEND[col].has(o.id)) nova.push(o); /* criado aqui e ainda não enviado */ });
+  server.forEach((sv,id)=>{ if(!vistos.has(id) && !DELP[col].has(id)) nova.push(sv); });
+  gravaCtl(col);
   syncMap[col].clear(); server.forEach((sv,id)=>syncMap[col].set(id, JSON.stringify(sv)));
   S[col]=nova; LS.set(col,S[col]); setTimeout(()=>syncCol(col),0); pedirRender();
 }
