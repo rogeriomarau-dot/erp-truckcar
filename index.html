@@ -312,7 +312,7 @@ table.t tfoot td{font-weight:600;border-top:2px solid var(--line)}
 tr.sel td{background:var(--accent-soft)}
 .selbar{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;margin:0 0 10px;border-radius:12px;background:var(--ink);color:var(--surface)}
 .selbar .btn.ghost{color:var(--surface);border-color:transparent}
-.bb-t tr.off td{opacity:.5}
+.bb-t tr.off td{opacity:.5} .bb-t tr.dif td{background:var(--warn-soft)} .sheet.wide{max-width:1100px} .bb-t select{min-height:34px;padding:4px 8px;font-size:13px} .linkbtn{all:unset;cursor:pointer;color:var(--accent);font-size:11.5px;text-decoration:underline}
 .pill.pago{background:var(--pos-soft);color:var(--pos);border-color:transparent}
 .empty{padding:28px 18px;text-align:center;color:var(--muted);border:1.5px dashed var(--line);border-radius:var(--r);display:flex;flex-direction:column;gap:10px;align-items:center}
 .empty b{color:var(--ink);font-size:15px}
@@ -1284,49 +1284,59 @@ ACT.selNada=el=>{ SELL[el.dataset.t].clear(); atualizarLanc(el.dataset.t); };
 ACT.baixarSel=el=>{ const t=el.dataset.t; formBaixaBloco(t, [...SELL[t]], null); };
 ACT.baixaBloco=el=>{ const t=el.dataset.t; formBaixaBloco(t, null, hoje()); };
 
-/* Modal: lista os títulos (marcados na tela ou de um dia de vencimento) e baixa todos com a mesma data, conta e forma */
+/* Modal: lista os títulos (marcados na tela ou de um dia de vencimento) e baixa todos de uma vez; cada linha pode ter forma e conta bancária próprias */
 function formBaixaBloco(t, ids, dia){
   const P=t==='P', porDia=!ids;
   const titulos=()=> porDia
     ? S.lancamentos.filter(l=>l.tipo===t && abertoL(l) && (F.bbVenc? l.vencimento<=dia : l.vencimento===dia)).sort((a,b)=>a.vencimento.localeCompare(b.vencimento)||String(nomePessoa(a)).localeCompare(String(nomePessoa(b))))
     : ids.map(id=>S.lancamentos.find(x=>x.id===id)).filter(abertoL).sort((a,b)=>a.vencimento.localeCompare(b.vencimento));
-  let ls=titulos(); const marc=new Set(ls.map(l=>l.id)), val={};
-  const lista=()=>{ if(!ls.length) return `<p class="note" style="margin:8px 0">${porDia?`Nenhum título em aberto com vencimento ${F.bbVenc?'até':'em'} ${dataBR(dia)}.`:'Nenhum título em aberto entre os marcados.'}</p>`;
-    return `<div class="tscroll" style="max-height:46vh;overflow:auto"><table class="t bb-t"><thead><tr><th style="width:34px"><input type="checkbox" id="bbTodos" aria-label="Marcar todos" ${marc.size===ls.length?'checked':''}></th><th>Vencimento</th><th>${P?'Fornecedor':'Cliente'} / descrição</th><th class="r">Valor do título</th><th class="r">Valor ${P?'pago':'recebido'}</th></tr></thead><tbody>
-      ${ls.map(l=>`<tr class="${marc.has(l.id)?'':'off'}"><td><input type="checkbox" data-bb="${l.id}" aria-label="Incluir ${esc(nomePessoa(l)||'')}" ${marc.has(l.id)?'checked':''}></td>
+  let ls=titulos(); const marc=new Set(ls.map(l=>l.id)), val={}, fo={}, bc={};
+  let pf='', pb=S.bancos.itens[0]?S.bancos.itens[0].id:'';
+  const formaDe=l=>fo[l.id]!==undefined?fo[l.id]:(pf||l.forma||''), bancoDe=l=>bc[l.id]!==undefined?bc[l.id]:pb;
+  const difer=l=>fo[l.id]!==undefined||bc[l.id]!==undefined;
+  const lista=()=>{ if(!ls.length) return `<div class="warnbox" style="margin:8px 0">${porDia?`Nenhum título em aberto com vencimento ${F.bbVenc?'até':'em'} ${dataBR(dia)}. Escolha outra data${F.bbVenc?'':' ou marque "Incluir também os vencidos"'}.`:'Nenhum título em aberto entre os marcados.'}</div>`;
+    return `<div class="tscroll" style="max-height:48vh;overflow:auto"><table class="t bb-t"><thead><tr><th style="width:34px"><input type="checkbox" id="bbTodos" aria-label="Marcar todos" ${marc.size===ls.length?'checked':''}></th><th>Vencimento</th><th>${P?'Fornecedor':'Cliente'} / descrição</th><th class="r">Valor do título</th><th class="r">Valor ${P?'pago':'recebido'}</th><th>Forma</th><th>Conta bancária</th></tr></thead><tbody>
+      ${ls.map(l=>`<tr class="${marc.has(l.id)?'':'off'}${difer(l)?' dif':''}"><td><input type="checkbox" data-bb="${l.id}" aria-label="Incluir ${esc(nomePessoa(l)||'')}" ${marc.has(l.id)?'checked':''}></td>
         <td class="num">${dataBR(l.vencimento)}${stL(l)==='vencido'?' <span class="pill vencido">vencido</span>':''}</td>
-        <td><div class="cell-main">${esc(nomePessoa(l)||'—')}</div><div class="cell-sub">${esc(l.descricao||nomeContaL(l))}${l.parcela?' · parc. '+esc(l.parcela):''}</div></td>
-        <td class="r">${brl(l.valor)}</td><td class="r"><input class="n" style="width:110px" inputmode="decimal" data-bv="${l.id}" value="${fmoney(val[l.id]??l.valor)}" aria-label="Valor pago"></td></tr>`).join('')}
+        <td><div class="cell-main">${esc(nomePessoa(l)||'—')}</div><div class="cell-sub">${esc(l.descricao||nomeContaL(l))}${l.parcela?' · parc. '+esc(l.parcela):''}${l.forma?' · lançado como '+esc(l.forma):''}</div></td>
+        <td class="r">${brl(l.valor)}</td><td class="r"><input class="n" style="width:104px" inputmode="decimal" data-bv="${l.id}" value="${fmoney(val[l.id]??l.valor)}" aria-label="Valor pago"></td>
+        <td><select data-bf="${l.id}" style="min-width:130px" aria-label="Forma deste título">${formaOptions(formaDe(l),t)}</select></td>
+        <td><select data-bk="${l.id}" style="min-width:150px" aria-label="Conta bancária deste título">${bancoOptions(bancoDe(l))}</select>${difer(l)?`<div><button type="button" class="linkbtn" data-m="bbPadrao" data-id="${l.id}">voltar ao padrão</button></div>`:''}</td></tr>`).join('')}
       </tbody></table></div>`; };
-  const resumo=()=>{ const sel=ls.filter(l=>marc.has(l.id)), tot=sel.reduce((a,l)=>a+(val[l.id]??l.valor),0);
-    return `<b>${sel.length}</b> de ${ls.length} título(s) · total ${P?'a pagar':'a receber'} <b>${brl(tot)}</b>`; };
-  const corpo=`${porDia?`<div class="fields"><div class="f s2"><label for="bbDia">Vencimento</label><input id="bbDia" type="date" value="${dia}"></div>
-      <div class="f s4" style="align-self:end"><label class="check"><input type="checkbox" id="bbVencidos" ${F.bbVenc?'checked':''}> Incluir também os vencidos antes desta data</label></div></div>`:''}
-    <div id="bbLista">${lista()}</div>
-    <p class="note" id="bbRes" style="margin:8px 0 12px">${resumo()}</p>
-    <div class="fields">
+  const resumo=()=>{ const sel=ls.filter(l=>marc.has(l.id)), tot=sel.reduce((a,l)=>a+(val[l.id]??l.valor),0), nd=sel.filter(difer).length;
+    return `<b>${sel.length}</b> de ${ls.length} título(s) · total ${P?'a pagar':'a receber'} <b>${brl(tot)}</b>${nd?` · <b>${nd}</b> com forma ou conta diferente do padrão`:''}`; };
+  const corpo=`<div class="fields">
+      ${porDia?`<div class="f s2"><label for="bbDia">Vencimento</label><input id="bbDia" type="date" value="${dia}"></div>
+      <div class="f s4" style="align-self:end"><label class="check"><input type="checkbox" id="bbVencidos" ${F.bbVenc?'checked':''}> Incluir também os vencidos antes desta data</label></div>`:''}
       <div class="f s2"><label for="bbData">Data do ${P?'pagamento':'recebimento'}</label><input id="bbData" type="date" value="${hoje()}"></div>
-      <div class="f s2"><label for="bbForma">Forma de ${P?'pagamento':'recebimento'}</label><select id="bbForma"><option value="">Manter a de cada título</option>${formaOptions('',t)}</select></div>
-      <div class="f s2"><label for="bbBanco">Conta bancária (${P?'de onde saiu':'onde entrou'})</label><select id="bbBanco">${bancoOptions(S.bancos.itens[0]?S.bancos.itens[0].id:'')}</select></div>
+      <div class="f s2"><label for="bbForma">Forma padrão</label><select id="bbForma"><option value="">Manter a de cada título</option>${formaOptions('',t)}</select></div>
+      <div class="f s2"><label for="bbBanco">Conta bancária padrão</label><select id="bbBanco">${bancoOptions(pb)}</select></div>
     </div>
-    <p class="note" style="margin:6px 0 0">Para juros ou desconto, altere o "Valor ${P?'pago':'recebido'}" na linha: a diferença para o valor do título é registrada como juros (se maior) ou desconto (se menor).</p>`;
+    <p class="note" style="margin:4px 0 8px">A forma e a conta padrão valem para todos os títulos. Se algum foi ${P?'pago':'recebido'} de outro jeito (outro banco, dinheiro, cartão), troque só na linha dele. Desmarque o título que não quer baixar agora. Juros ou desconto: altere o valor na linha.</p>
+    <div id="bbLista">${lista()}</div>
+    <p class="note" id="bbRes" style="margin:8px 0 0">${resumo()}</p>`;
   const sh=()=>$('#sheet'), redesenha=()=>{ sh().querySelector('#bbLista').innerHTML=lista(); sh().querySelector('#bbRes').innerHTML=resumo(); };
   abrirModal(P?'Baixa em bloco · contas a pagar':'Recebimento em bloco · contas a receber', corpo,
     `<span></span><div class="row"><button class="btn" data-m="fechar">Cancelar</button><button class="btn primary" data-m="ok">${P?'Confirmar pagamentos':'Confirmar recebimentos'}</button></div>`, {
     change:el=>{
       if(el.id==='bbDia'||el.id==='bbVencidos'){ if(el.id==='bbDia') dia=el.value||hoje(); else F.bbVenc=el.checked; ls=titulos(); marc.clear(); ls.forEach(l=>marc.add(l.id)); redesenha(); return; }
+      if(el.id==='bbForma'){ pf=el.value; redesenha(); return; }
+      if(el.id==='bbBanco'){ pb=el.value; redesenha(); return; }
       if(el.id==='bbTodos'){ marc.clear(); if(el.checked) ls.forEach(l=>marc.add(l.id)); redesenha(); return; }
       if(el.dataset.bb){ el.checked?marc.add(el.dataset.bb):marc.delete(el.dataset.bb); redesenha(); return; }
+      if(el.dataset.bf){ const l=ls.find(x=>x.id===el.dataset.bf); if(el.value===(pf||l.forma||'')) delete fo[l.id]; else fo[l.id]=el.value; redesenha(); return; }
+      if(el.dataset.bk){ if(el.value===pb) delete bc[el.dataset.bk]; else bc[el.dataset.bk]=el.value; redesenha(); return; }
       if(el.dataset.bv){ val[el.dataset.bv]=Math.round(parseNum(el.value)*100)/100; el.value=fmoney(val[el.dataset.bv]); sh().querySelector('#bbRes').innerHTML=resumo(); } },
+    bbPadrao:b=>{ delete fo[b.dataset.id]; delete bc[b.dataset.id]; redesenha(); },
     ok:()=>{ const sel=ls.filter(l=>marc.has(l.id)); if(!sel.length){ toast('Marque pelo menos um título.'); return; }
       if(sel.some(l=>!((val[l.id]??l.valor)>0))){ toast('Há título com valor zerado. Corrija ou desmarque.'); return; }
-      const data=mv('bbData')||hoje(), banco=mv('bbBanco'), forma=mv('bbForma');
+      const data=mv('bbData')||hoje();
       sel.forEach(l=>{ const v=val[l.id]??l.valor, dif=Math.round((v-l.valor)*100)/100;
-        l.status='pago'; l.pagamento={data, valor:v, juros:dif>0?dif:0, desconto:dif<0?-dif:0, bancoId:banco, forma:forma||l.forma||'', bloco:true}; touch(l); SELL[t].delete(l.id); });
+        l.status='pago'; l.pagamento={data, valor:v, juros:dif>0?dif:0, desconto:dif<0?-dif:0, bancoId:bancoDe(l), forma:formaDe(l), bloco:true}; touch(l); SELL[t].delete(l.id); });
       salvarCol('lancamentos'); fecharModal(); toast(`${sel.length} título(s) ${P?'pago(s)':'recebido(s)'} · ${brl(sel.reduce((a,l)=>a+l.pagamento.valor,0))}`); }
   }, false);
+  $('#sheet').classList.add('wide');
 }
-
 /* ======================= DRE ======================= */
 /* ---------- Períodos (mês, trimestre, semestre, ano) ---------- */
 const MES_ATUAL=new Date().getMonth();
