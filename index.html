@@ -232,6 +232,7 @@ input.n{text-align:right}
 .oq2-pc2 label{font-size:11px}.oq2-mg{font-family:var(--f-num);font-size:12.5px;white-space:pre-line;text-align:right;line-height:1.25;min-height:42px;display:flex;align-items:center;justify-content:flex-end}
 .oq2-ml{display:grid;grid-template-columns:1fr 1fr;gap:10px}.oq2-ml div{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
 .oq2-ml small{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}.oq2-ml b{font-family:var(--f-num);font-size:20px;font-weight:500}
+.od-pecas{margin-top:16px}.od-pcl{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:10px}.od-pec-tot{display:flex;flex-direction:column;gap:8px;max-width:520px;margin-left:auto;width:100%}
 .oq-total{background:var(--side);color:var(--side-hi);border-radius:12px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .oq-total h2{font-size:24px}.oq-total b{font-family:var(--f-num);font-size:32px;font-weight:500}.oq-det{font-size:13px;opacity:.75;width:100%}
 .oq-acoes{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -655,7 +656,12 @@ const partes=l=>(l.rateio && l.rateio.length)? l.rateio : [{contaId:l.contaId, v
 const nomeContaL=l=>(l.rateio && l.rateio.length>1)? `Rateio em ${l.rateio.length} categorias` : nomeConta(l.contaId);
 
 /* Plano v2: receitas em duas contas (Preparação e Acabamento). Setores antigos com lançamentos ficam desativados para preservar o histórico. */
-function migrarPlano(){
+/* Conta de receita "Venda de peças" (nov/2026): criada uma vez no grupo das receitas de serviço */
+function garantirVendaPecas(){ if(!S.plano||!Array.isArray(S.plano.grupos)||S.plano.vendaPecas) return false;
+  const rec=S.plano.grupos.filter(g=>g.secao==='receita'); const g=rec.find(g=>g.contas.some(c=>/PREPAR|ACABAM/.test(norm(c.nome)))); if(!g) return false;
+  S.plano.vendaPecas=true; if(!rec.some(x=>x.contas.some(c=>/PECA/.test(norm(c.nome))))) g.contas.push({id:uid(), nome:'Venda de peças', ativo:true}); if(typeof idxV!=='undefined') idxV++; return true; }
+function migrarPlano(){ const a=migrarPlanoV2(), b=garantirVendaPecas(); return a||b; }
+function migrarPlanoV2(){
   if((S.plano.versao||1)>=2) return false;
   const usados=new Set(); S.lancamentos.forEach(l=>partes(l).forEach(p=>usados.add(p.contaId)));
   const manter=S.plano.grupos.filter(g=>g.secao==='receita' && g.contas.some(c=>usados.has(c.id)));
@@ -2909,7 +2915,7 @@ const ORC_SET=[{k:'prep', nome:'Preparação', rec:/PREPAR/},{k:'acab', nome:'Ac
 /* Orçamento detalhado: os 4 setores de serviço */
 const OD_SET=[{k:'prep', nome:'Preparação', rec:/PREPAR/},{k:'acab', nome:'Acabamento', rec:/ACABAM/},{k:'pol', nome:'Polimento', rec:/POLIM/},{k:'hig', nome:'Higienização', rec:/HIGIEN/}];
 const ORC_DEF={prep:{hora:37, qt:8, mat:680, mult:2.5}, acab:{hora:44, qt:8, mat:542, mult:2.5}};
-const ORC_ST={aberto:'Em aberto', aprovado:'Aprovado', recusado:'Recusado'};
+const ORC_ST={aberto:'Em aberto', aprovado:'Aprovado', recusado:'Recusado', cliente:'Cliente aprovou', detalhado:'Passado ao detalhado'};
 F.orcQ=''; F.orcSt='todos';
 const orcPadrao=()=>Object.assign({}, ORC_DEF, (S.cfg.orcPadrao||{}));
 function orcCalc(o){ if(o&&o.tipo==='det') return odCalc(o); if(ehV2(o)) return oq2Calc(o); const r={}; let total=0; ORC_SET.forEach(s=>{ const x=o.setores[s.k]||{}; const mo=(+x.hora||0)*(+x.qt||0), custo=mo+(+x.mat||0), preco=Math.round(custo*(+x.mult||0)*100)/100; r[s.k]={mo, custo, preco}; total+=preco; }); r.total=Math.round(total*100)/100; return r; }
@@ -2937,7 +2943,7 @@ function oq2Calc(o){ const s=o.serv||{}, mo=r2((+s.hora||0)*(+s.horas||0)), ins=
   const pc=r2(ps.reduce((a,x)=>a+x.c,0)), pv=r2(ps.reduce((a,x)=>a+x.v,0));
   const margemServ=preco?(preco-custo)/preco:0;
   return {serv:{mo, ins, custo, pMult, pMarg, preco, margem:margemServ}, pec:{preco:pv, custo:pc, margem:r2(pv-pc), mp:pv?(pv-pc)/pv:0, linhas:ps}, total:r2(preco+pv)}; }
-const orcSetoresDe=o=> o&&o.tipo==='det'? OD_SET : ehV2(o)? OQ2_SET : ORC_SET;
+const orcSetoresDe=o=> o&&o.tipo==='det'? OD_SET.concat([OD_PEC]) : ehV2(o)? OQ2_SET : ORC_SET;
 
 function vOrcV2(O, trav){
   const dis=trav?' disabled':'', s=O.serv, P=oq2Padrao();
@@ -2996,7 +3002,7 @@ const orcSnap=O=>JSON.stringify([O.numero,O.data,O.cliente,O.veiculo,O.obs,O.set
 
 function vOrcamentos(){
   if(!F.orcEd){ F.orcEd=orcNovoObj(); F.orcSalvo=''; }
-  const O=F.orcEd, trav=O.status==='aprovado', dis=trav?' disabled':'', e=S.cfg.empresa||{};
+  const O=F.orcEd, trav=O.status==='aprovado'||O.status==='detalhado', dis=trav?' disabled':'', e=S.cfg.empresa||{};
   const inp=(id,val,extra)=>`<input id="${id}" value="${esc(val??'')}" data-inp="oqIn" ${extra||''}${dis}>`;
   const setor=s=>{ const x=O.setores[s.k]; return `<section class="card oq-setor" aria-label="${s.nome}">
     <div class="oq-setor-h"><h2>${s.nome}</h2></div>
@@ -3011,7 +3017,7 @@ function vOrcamentos(){
   <header class="oq-top">
     <div class="oq-marca"><div class="oq-lg"><img src="${S.logo||LOGO}" alt="${esc(e.nome||'Truckcar')}"></div>
       <div><h1>Orçamento de serviço</h1><div class="oq-subh">${esc([(e.nome||'Truckcar Centro Automotivo').replace(/^Truckcar\s*/i,''), e.endereco, (e.cidade||'').split(' · ')[0]].filter(Boolean).join(' · '))}</div><div class="oq-subh">Contato: ${esc(e.fone||'(51) 99908-4244')}</div></div></div>
-    <span class="oq-orc"><span>Orçamentista: <b>${esc(O.orcamentista||'Dionatan')}</b></span><span>Nº <b id="oqNumTop">${esc(O.numero)}</b></span><span class="pill ${st==='aprovado'?'pago':st==='recusado'?'cancelado':'aberto'}">${ORC_ST[st]}</span></span>
+    <span class="oq-orc"><span>Orçamentista: <b>${esc(O.orcamentista||'Dionatan')}</b></span><span>Nº <b id="oqNumTop">${esc(O.numero)}</b></span><span class="pill ${st==='aprovado'||st==='cliente'||st==='detalhado'?'pago':st==='recusado'?'cancelado':'aberto'}">${ORC_ST[st]}</span></span>
   </header>
   <section class="card oq-cli" aria-label="Dados do cliente">
     <div class="f"><label for="oqNum">Nº orçamento</label>${inp('oqNum',O.numero,'class="n" inputmode="numeric"')}</div>
@@ -3022,7 +3028,8 @@ function vOrcamentos(){
   ${ehV2(O)?vOrcV2(O,trav):`<div class="oq-setores">${ORC_SET.map(setor).join('')}</div>`}
   <section class="card" aria-label="Observações"><div class="f"><label for="oqObs">Observações para o cliente (saem no PDF)</label><textarea id="oqObs" rows="3" data-inp="oqIn" placeholder="Ex.: Validade de 7 dias. Prazo de execução: 5 dias úteis. Pagamento: 50% na entrada e 50% na entrega."${dis}>${esc(O.obs||'')}</textarea></div></section>
   <section class="oq-total" aria-live="polite"><h2>Total do orçamento</h2><b id="oqTotal">—</b><span class="oq-det" id="oqDet"></span></section>
-  ${trav?`<div class="warnbox">Orçamento aprovado: já virou conta a receber${O.lancIds&&O.lancIds.length?` (${O.lancIds.length} título(s), documento "Orç. ${esc(O.numero)}")`:''}. Para mudar valores, edite os títulos em Contas a receber ou desfaça a aprovação. <button type="button" class="btn sm" data-act="oqDesfazer" style="margin-left:8px">Desfazer aprovação</button></div>`:''}
+  ${O.status==='detalhado'?`<div class="warnbox">Este orçamento foi passado para o <b>orçamento detalhado nº ${esc(O.detNumero||'')}</b>. A aprovação e o lançamento em Contas a receber são feitos por lá. <button type="button" class="btn sm" data-act="oq2AbrirDet" style="margin-left:8px">Abrir o detalhado</button><button type="button" class="btn sm ghost" data-act="oq2Destravar" style="margin-left:4px">Destravar para editar</button></div>`
+   : trav?`<div class="warnbox">Orçamento aprovado: já virou conta a receber${O.lancIds&&O.lancIds.length?` (${O.lancIds.length} título(s), documento "Orç. ${esc(O.numero)}")`:''}. Para mudar valores, edite os títulos em Contas a receber ou desfaça a aprovação. <button type="button" class="btn sm" data-act="oqDesfazer" style="margin-left:8px">Desfazer aprovação</button></div>`:''}
   <section class="card" style="display:flex;flex-direction:column;gap:10px">
     <div class="oq-acoes">
       ${!trav?`<button class="btn oq-salvar" type="button" data-act="oqSalvar">Salvar orçamento</button>`:''}
@@ -3032,12 +3039,12 @@ function vOrcamentos(){
       <button class="btn" type="button" data-act="oqAnt" aria-expanded="${F.orcAnt}">Orçamentos anteriores${S.orcamentos.filter(o=>o.tipo!=='det').length?` (${S.orcamentos.filter(o=>o.tipo!=='det').length})`:''}</button>
       <span class="oq-estado ${salvo&&F.orcSalvo===orcSnap(O)?'ok':''}" id="oqEstado">${!salvo?'Ainda não salvo':F.orcSalvo===orcSnap(O)?'Salvo':'Alterações não salvas'}</span>
     </div>
-    ${!trav?`<div class="oq-acoes oq-acoes2"><button class="btn primary" type="button" data-act="oqAprovar">Aprovar e gerar conta a receber</button>${salvo&&st==='aberto'?`<button class="btn" type="button" data-act="oqRecusar">Marcar como recusado</button>`:''}${st==='recusado'?`<button class="btn" type="button" data-act="oqReabrir">Reabrir</button>`:''}${salvo?`<button class="btn danger" type="button" data-act="oqExcluir">Excluir orçamento</button>`:''}</div>`:''}
+    ${!trav?`<div class="oq-acoes oq-acoes2">${ehV2(O)?`${st!=='cliente'?`<button class="btn" type="button" data-act="oq2Cliente">Cliente aprovou</button>`:''}<button class="btn primary" type="button" data-act="oq2PassarDet">Passar para o orçamento detalhado</button>`:`<button class="btn primary" type="button" data-act="oqAprovar">Aprovar e gerar conta a receber</button>`}${salvo&&(st==='aberto'||st==='cliente')?`<button class="btn" type="button" data-act="oqRecusar">Marcar como recusado</button>`:''}${st==='recusado'?`<button class="btn" type="button" data-act="oqReabrir">Reabrir</button>`:''}${salvo?`<button class="btn danger" type="button" data-act="oqExcluir">Excluir orçamento</button>`:''}</div>`:''}
     <textarea id="oqResumo" readonly aria-label="Resumo do orçamento" class="oq-resumo"></textarea>
     <p class="note">Campos em amarelo são editáveis. ${ehV2(O)?'Serviço: custo = custo hora × horas + insumos; preço = custo × multiplicador ou custo ÷ (1 − margem desejada). Peças: margem líquida = venda − custo; o cliente vê só o preço de venda.':'Preço do setor = (valor da hora × horas + material) × multiplicador.'} "Salvar orçamento" guarda o orçamento com o número da tela; baixar o PDF também salva. A numeração começa em ${ORC_INICIO} e segue a mesma sequência em qualquer aparelho (pode ser alterada à mão). "Aprovar" lança o orçamento em Contas a receber: unificado (valor total, em parcelas) ou separado por setor. O PDF e o resumo levam só os preços finais de cada setor, sem custos e multiplicadores.</p>
   </section>
   ${F.orcAnt?`<section class="card oq-ant" aria-label="Orçamentos anteriores">
-    <div class="oq-ant-h"><h2>Orçamentos anteriores</h2><div class="chips" role="group" aria-label="Situação">${['todos','aberto','aprovado','recusado'].map(k=>`<button type="button" data-act="orcSt" data-v="${k}" aria-pressed="${F.orcSt===k}">${k==='todos'?'Todos':ORC_ST[k]}</button>`).join('')}</div><button class="btn sm" type="button" data-act="oqAnt">Fechar</button></div>
+    <div class="oq-ant-h"><h2>Orçamentos anteriores</h2><div class="chips" role="group" aria-label="Situação">${['todos','aberto','cliente','detalhado','aprovado','recusado'].map(k=>`<button type="button" data-act="orcSt" data-v="${k}" aria-pressed="${F.orcSt===k}">${k==='todos'?'Todos':ORC_ST[k]}</button>`).join('')}</div><button class="btn sm" type="button" data-act="oqAnt">Fechar</button></div>
     <input id="oqBusca" type="search" value="${esc(F.orcQ)}" data-inp="orcQ" placeholder="Buscar por cliente, veículo, placa ou nº" aria-label="Buscar orçamento anterior">
     <div id="oqLista">${listaOrcAnt()}</div></section>`:''}
   </div>`;
@@ -3082,10 +3089,37 @@ ACT.oqReabrir=()=>oqStatus('aberto','Orçamento reaberto');
 let oqConf=0; ACT.oqExcluir=b=>{ const O=F.orcEd; if(Date.now()-oqConf>4000){ oqConf=Date.now(); b.textContent='Toque de novo para excluir'; return; }
   S.orcamentos=S.orcamentos.filter(x=>x.id!==O.id); salvarCol('orcamentos'); toast('Orçamento Nº '+O.numero+' excluído'); F.orcEd=orcNovoObj(); F.orcSalvo=''; render(); };
 
+
+/* Dionatan → Dani: cliente aprovou (só situação) e passagem para o orçamento detalhado */
+ACT.oq2Cliente=()=>oqStatus('cliente','Marcado: cliente aprovou. Agora passe para o orçamento detalhado.');
+ACT.oq2Destravar=()=>{ oqStatus('cliente','Orçamento destravado para edição. O detalhado nº '+(F.orcEd.detNumero||'')+' continua salvo.'); };
+ACT.oq2AbrirDet=()=>{ const o=S.orcamentos.find(x=>x.id===F.orcEd.detId); if(!o){ toast('Não encontrei o orçamento detalhado. Ele pode ter sido excluído.'); return; }
+  F.odEd=clone(o); odGarantir(F.odEd); F.odSalvo=odSnap(F.odEd); F.orcTipo='det'; LS.set('orcTipo','det'); render(); window.scrollTo({top:0}); };
+ACT.oq2PassarDet=()=>{ oqLer(); const O=F.orcEd; if(!O.cliente){ toast('Informe o nome do cliente.'); return; } if(!(orcCalc(O).total>0)){ toast('O orçamento está sem valor.'); return; }
+  if(O.detId && S.orcamentos.some(x=>x.id===O.detId)){ oqSalvar(true); toast('Este orçamento já tem o detalhado nº '+O.detNumero+'. Abrindo ele para ajustar.'); ACT.oq2AbrirDet(); return; }
+  if(!oqSalvar(true)) return; const c=orcCalc(O);
+  const corpo=`<p class="note" style="margin:0">Orçamento nº <b>${esc(O.numero)}</b> · ${esc(O.cliente)} · serviço ${brl(c.serv.preco)}${c.pec.preco?' + peças '+brl(c.pec.preco):''} = <b>${brl(c.total)}</b></p>
+    <div class="f"><label for="pdSet">Em qual setor entram as horas e os insumos do serviço?</label><select id="pdSet">${OD_SET.map(s=>`<option value="${s.k}">${s.nome}</option>`).join('')}</select></div>
+    <label class="check"><input type="checkbox" id="pdPreco" checked> Manter o preço passado ao cliente (${brl(c.serv.preco)}) como preço final do setor</label>
+    <p class="note" style="margin:0">Vai ser criado um orçamento detalhado novo, vinculado a este, com cliente, veículo, horas, insumos e peças. A Dani completa (insumos do cadastro, outros setores, dados do veículo) e é ele que aprova e gera a conta a receber. Este orçamento fica travado como "Passado ao detalhado".</p>`;
+  abrirModal('Passar para o orçamento detalhado', corpo, `<span></span><div class="row"><button class="btn" data-m="fechar">Cancelar</button><button class="btn primary" data-m="ok">Criar orçamento detalhado</button></div>`, {
+    ok:()=>{ const k=mv('pdSet')||'prep', manter=$('#sheet').querySelector('#pdPreco').checked, D=odNovoObj(), x=D.setores[k];
+      D.cliente=O.cliente; D.data=hoje(); D.origem={id:O.id, numero:O.numero, orcamentista:O.orcamentista||''};
+      const cad=S.clientes.find(p=>norm(p.nome)===norm(O.cliente)); if(cad){ D.cli={doc:cad.doc||'', contato:cad.contato||'', fone:cad.celular||cad.fone||'', email:cad.email||'', cidade:[cad.cidade,cad.uf].filter(Boolean).join(' / ')}; }
+      if(O.veiculo){ const m=String(O.veiculo).match(/[A-Z]{3}-?\d[A-Z0-9]\d{2}/i); D.vei.placa=m?m[0].toUpperCase().replace('-',''):''; D.vei.modelo=String(O.veiculo).replace(m?m[0]:'','').replace(/[·\-\s]+$|^[·\-\s]+/g,'').trim(); D.veiculo=O.veiculo; }
+      x.horas=+O.serv.horas||0; x.hora=+O.serv.hora||x.hora;
+      const ins=(O.serv.insumos||[]).filter(i=>String(i.desc||'').trim()||+i.valor).map(i=>Object.assign(odItem(),{desc:i.desc||'Insumo', qtd:1, un:'un', custo:+i.valor||0}));
+      x.itens=ins.length?ins:[odItem()]; if(manter) x.preco=c.serv.preco; else x.mult=+O.serv.mult||x.mult;
+      D.pecas=(O.pecas||[]).filter(p=>String(p.desc||'').trim()||+p.custo||+p.venda).map(p=>Object.assign({},p)); if(!D.pecas.length) D.pecas=[oq2Pec()];
+      D.servico.descricao=O.obs||''; D.obs='';
+      F.odEd=D; F.odSalvo=''; if(!odSalvar(true)) return;
+      O.status='detalhado'; O.detId=D.id; O.detNumero=D.numero; touch(O); const i=S.orcamentos.findIndex(z=>z.id===O.id); if(i>=0) S.orcamentos[i]=clone(O); salvarCol('orcamentos'); F.orcSalvo=orcSnap(O);
+      F.orcTipo='det'; LS.set('orcTipo','det'); fecharModal(); window.scrollTo({top:0}); toast(`Orçamento detalhado nº ${D.numero} criado a partir do nº ${O.numero}`); } }, true); };
+
 /* Aprovação: um título a receber por setor com valor */
 const addDias=(iso,n)=>{ const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
 function aprovarOrc(O){
-  const c=orcCalc(O), setores=orcSetoresDe(O).filter(s=>c[s.k].preco>0), semConta=ehV2(O)?[]:setores.filter(s=>!contaReceita(s.rec)), cId=s=>ehV2(O)?oq2Conta(s):contaReceita(s.rec);
+  const c=orcCalc(O), setores=orcSetoresDe(O).filter(s=>c[s.k].preco>0), semConta=setores.filter(s=>!s.novo&&!contaReceita(s.rec)), cId=s=>s.novo?oq2Conta(s):contaReceita(s.rec);
   let modo='unico', n=1, parc=[];
   const comp0=O.data||hoje();
   const gerar=()=>{ const v1=mv('apVenc')||hoje(), intv=mv('apInt'), dias=parseInt(mv('apDias'),10)||15; n=Math.max(1,parseInt(mv('apParc'),10)||1);
@@ -3178,7 +3212,7 @@ async function orcPDF(O,b){
    Preço do setor = custo × multiplicador, ou o preço final digitado. Aprovação usa o mesmo fluxo do rápido (aprovarOrc). */
 const OD_TIPOS=['Cavalo mecânico','Caminhão toco','Caminhão truck','Bitruck','Carreta / semirreboque','Implemento / baú','Utilitário','Ônibus','Outro'];
 F.orcTipo=LS.get('orcTipo','rapido'); F.odEd=null; F.odSalvo=''; F.odAnt=false; F.odQ=''; F.odSt='todos';
-const odSnap=O=>JSON.stringify([O.numero,O.data,O.validade,O.orcamentista,O.cliente,O.cli,O.vei,O.servico,O.obs,O.pdfItens,O.setores]);
+const odSnap=O=>JSON.stringify([O.numero,O.data,O.validade,O.orcamentista,O.cliente,O.cli,O.vei,O.servico,O.obs,O.pdfItens,O.setores,O.pecas]);
 const odGet=(o,p)=>p.split('.').reduce((a,k)=>a==null?a:a[k],o);
 function odSet(o,p,v){ const ks=p.split('.'); let a=o; ks.slice(0,-1).forEach(k=>{ if(a[k]==null) a[k]={}; a=a[k]; }); a[ks[ks.length-1]]=v; }
 const odVeicTxt=O=>{ const v=O.vei||{}; return [v.placa, [v.marca,v.modelo].filter(Boolean).join(' ')].filter(Boolean).join(' · '); };
@@ -3190,12 +3224,16 @@ function odNovoObj(){ const P=orcPadrao(), set={};
   OD_SET.forEach(s=>{ set[s.k]={itens:[odItem(),odItem(),odItem()], hora:odHoraPadrao(s.k), horas:0, mult:+(P[s.k]&&P[s.k].mult)||2.5, preco:0}; });
   return {tipo:'det', numero:orcNumProx(), data:hoje(), validade:15, status:'aberto', orcamentista:(USR&&USR.nome)||S.cfg.orcamentista||'',
     cliente:'', cli:{doc:'',contato:'',fone:'',email:'',cidade:''}, veiculo:'', vei:{placa:'',tipo:'Cavalo mecânico',marca:'',modelo:'',ano:'',cor:'',km:'',frota:''},
-    servico:{descricao:'',prazo:'',pagamento:''}, obs:'', pdfItens:false, setores:set}; }
+    servico:{descricao:'',prazo:'',pagamento:''}, obs:'', pdfItens:false, setores:set, pecas:[oq2Pec()]}; }
+function odGarantir(O){ OD_SET.forEach(s=>{ const x=O.setores[s.k]=O.setores[s.k]||{itens:[],hora:0,horas:0,mult:2.5,preco:0}; if(!x.itens.length) x.itens.push(odItem()); }); if(!Array.isArray(O.pecas)||!O.pecas.length) O.pecas=[oq2Pec()]; return O; }
 function odCalc(o){ const r={}; let total=0, custoT=0;
   OD_SET.forEach(s=>{ const x=(o.setores||{})[s.k]||{itens:[]};
     const mat=(x.itens||[]).reduce((a,i)=>a+(+i.qtd||0)*(+i.custo||0),0), mo=(+x.hora||0)*(+x.horas||0), custo=Math.round((mat+mo)*100)/100;
     const calc=Math.round(custo*(+x.mult||0)*100)/100, manual=+x.preco>0, preco=manual?Math.round(+x.preco*100)/100:calc;
     r[s.k]={mat, mo, custo, calc, preco, manual, margem:preco-custo, mp:preco>0?(preco-custo)/preco:NaN}; total+=preco; custoT+=custo; });
+  const ps=(o.pecas||[]).map(p=>{ const q=+p.qtd||0, cc=r2(q*(+p.custo||0)), v=r2(q*(+p.venda||0)); return {c:cc, v, m:r2(v-cc), mp:v?(v-cc)/v:0}; });
+  const pc=r2(ps.reduce((a,x)=>a+x.c,0)), pv=r2(ps.reduce((a,x)=>a+x.v,0));
+  r.pec={mat:pc, mo:0, custo:pc, calc:pv, preco:pv, manual:false, margem:pv-pc, mp:pv>0?(pv-pc)/pv:NaN, linhas:ps}; total+=pv; custoT+=pc;
   r.total=Math.round(total*100)/100; r.custo=custoT; r.margem=r.total-custoT; r.mp=r.total>0?r.margem/r.total:NaN; return r; }
 
 /* Insumos do cadastro: último preço de compra e conversão para kg / L / m */
@@ -3260,7 +3298,7 @@ function vOrcDet(){
   return `<div class="oq od">
   <header class="oq-top">
     <div class="oq-marca"><div class="oq-lg"><img src="${S.logo||LOGO}" alt="${esc(e.nome||'Truckcar')}"></div>
-      <div><h1>Orçamento detalhado</h1><div class="oq-subh">${esc([(e.nome||'Truckcar Centro Automotivo').replace(/^Truckcar\s*/i,''), e.endereco, (e.cidade||'').split(' · ')[0]].filter(Boolean).join(' · '))}</div><div class="oq-subh">Contato: ${esc(e.fone||'(51) 99908-4244')}</div></div></div>
+      <div><h1>Orçamento detalhado</h1>${O.origem?`<div class="oq-subh">Origem: orçamento rápido nº ${esc(O.origem.numero)}${O.origem.orcamentista?' ('+esc(O.origem.orcamentista)+')':''}</div>`:''}<div class="oq-subh">${esc([(e.nome||'Truckcar Centro Automotivo').replace(/^Truckcar\s*/i,''), e.endereco, (e.cidade||'').split(' · ')[0]].filter(Boolean).join(' · '))}</div><div class="oq-subh">Contato: ${esc(e.fone||'(51) 99908-4244')}</div></div></div>
     <span class="oq-orc"><span>Orçamentista: <b id="odOrcTop">${esc(O.orcamentista||'—')}</b></span><span>Nº <b id="odNumTop">${esc(O.numero)}</b></span><span class="pill ${st==='aprovado'?'pago':st==='recusado'?'cancelado':'aberto'}">${ORC_ST[st]}</span></span>
   </header>
   <section class="card" aria-label="Cliente"><h2 class="od-ct">Cliente</h2><div class="fields">
@@ -3292,6 +3330,7 @@ function vOrcDet(){
   </div></section>
   <datalist id="odInsList">${odInsumos().map(i=>{ const p=odPrecoIns(i); return `<option value="${esc(i.descricao)}">${p.custo?brl(p.custo)+'/'+esc(p.un):'sem preço'}</option>`; }).join('')}</datalist>
   <div class="od-setores">${OD_SET.map(setor).join('')}</div>
+  ${odPecasHTML(O,trav,dis,num)}
   <section class="card" aria-label="Observações"><div class="f"><label for="od_obs">Observações para o cliente (saem no PDF)</label><textarea id="od_obs" rows="3" data-inp="odIn" data-k="obs" placeholder="Garantia, itens não inclusos, peças fornecidas pelo cliente…"${dis}>${esc(O.obs||'')}</textarea></div>
     <label class="check" for="od_pdfItens"><input id="od_pdfItens" type="checkbox" data-chg="odIn" data-k="pdfItens"${O.pdfItens?' checked':''}${dis}> Listar os materiais no PDF (só descrição e quantidade, sem custos)</label></section>
   <section class="card od-comp" aria-label="Composição do custo"><div class="oq-setor-h od-sh"><h2>Composição do custo</h2><span class="hint">Uso interno: não sai no PDF nem no resumo do cliente</span></div><div id="odComp"></div></section>
@@ -3331,7 +3370,7 @@ ACT.odSt=el=>{ F.odSt=el.dataset.v; render(); };
 
 function odResumo(O){ const c=odCalc(O), SV=O.servico||{};
   return ['*ORÇAMENTO DE SERVIÇO TRUCKCAR* · Nº '+O.numero, O.orcamentista?'Orçamentista: '+O.orcamentista:null, O.cliente?'Cliente: '+O.cliente:null, O.veiculo?'Veículo: '+O.veiculo:null, O.data?'Data: '+dataBR(O.data):null,
-    SV.descricao?'\n'+SV.descricao:null, '', ...OD_SET.filter(s=>c[s.k].preco>0).map(s=>s.nome+': '+brl(c[s.k].preco)), '', '*Total: '+brl(c.total)+'*',
+    SV.descricao?'\n'+SV.descricao:null, '', ...OD_SET.filter(s=>c[s.k].preco>0).map(s=>s.nome+': '+brl(c[s.k].preco)), ...(c.pec.preco>0?['Peças: '+brl(c.pec.preco), ...(O.pecas||[]).filter(p=>String(p.desc||'').trim()&&+p.venda).map(p=>'  • '+p.desc+(+p.qtd!==1?' ('+fnum(p.qtd,2)+'x)':'')+' '+brl((+p.qtd||0)*(+p.venda||0)))]:[]), '', '*Total: '+brl(c.total)+'*',
     SV.prazo?'Prazo de execução: '+SV.prazo:null, SV.pagamento?'Pagamento: '+SV.pagamento:null, O.validade?'Validade: '+O.validade+' dias':null, O.obs?'\n'+O.obs:null].filter(x=>x!==null).join('\n'); }
 /* Cadeia de custo do orçamento: materiais + cada despesa fixa rateada pelas horas + margem */
 function odCompHTML(O,c){ const R=fixosRef(), H=OD_SET.reduce((a,s)=>a+(+((O.setores[s.k]||{}).horas)||0),0);
@@ -3340,6 +3379,7 @@ function odCompHTML(O,c){ const R=fixosRef(), H=OD_SET.reduce((a,s)=>a+(+((O.set
   const pctT=v=>c.total>0?`<span class="cell-sub" style="margin-left:6px">${pct(v/c.total)}</span>`:'';
   let rows='';
   rows+=lin('<b>Materiais</b>', brl(mat)+pctT(mat), OD_SET.filter(s=>c[s.k].mat).map(s=>esc(s.nome)+' '+brl(c[s.k].mat)).join(' · '), 'grp');
+  if(c.pec&&c.pec.custo) rows+=lin('<b>Peças (custo)</b>', brl(c.pec.custo)+pctT(c.pec.custo), (O.pecas||[]).filter(p=>String(p.desc||'').trim()).map(p=>esc(p.desc)).join(' · '), 'grp');
   rows+=lin(`<b>Mão de obra e estrutura</b>`, brl(mo)+pctT(mo), H?`${fnum(H,2)} h no total (${OD_SET.filter(s=>+((O.setores[s.k]||{}).horas)).map(s=>esc(s.nome)+' '+fnum(+O.setores[s.k].horas,2)+' h').join(' · ')})`:'informe as horas de cada setor', 'grp');
   if(H>0 && R.ch>0 && !R.inf) rows+=lin('<span class="cell-sub">Base do custo da hora</span>', `<span class="cell-sub">${brl(R.ch)}/h</span>`, `despesas fixas pelo regime de competência, média de ${esc(R.rotulo)}: ${brl(R.total)}/mês ÷ ${fnum(R.hProd,1)} h produtivas`);
   if(H>0 && R.ch>0){
@@ -3348,7 +3388,7 @@ function odCompHTML(O,c){ const R=fixosRef(), H=OD_SET.reduce((a,s)=>a+(+((O.set
     if(Math.abs(fat-1)>0.005) rows+=lin('<span class="cell-sub">Ajuste pelo custo da hora digitado nos setores</span>', `<span class="cell-sub">${fat>1?'+':''}${pct(fat-1)}</span>`);
   }
   rows+=lin('<b>Custo total do orçamento</b>', `<b>${brl(c.custo)}</b>`, '', 'tot');
-  rows+=lin('Preço ao cliente', brl(c.total), OD_SET.filter(s=>c[s.k].preco).map(s=>esc(s.nome)+' '+brl(c[s.k].preco)).join(' · '));
+  rows+=lin('Preço ao cliente', brl(c.total), OD_SET.concat([OD_PEC]).filter(s=>c[s.k].preco).map(s=>esc(s.nome)+' '+brl(c[s.k].preco)).join(' · '));
   rows+=lin(`<b>Margem (preço − custo)</b>`, `<b class="${c.margem<0?'neg-t':''}">${brl(c.margem)}</b>${c.total>0?`<span class="cell-sub" style="margin-left:6px">${pct(c.mp)}</span>`:''}`, 'antes de impostos e taxas sobre a venda', 'tot');
   const imp=c.total*R.imp, liq=c.margem-imp;
   rows+=lin(`(−) Impostos e taxas sobre a venda`, brl(imp)+(c.total>0?`<span class="cell-sub" style="margin-left:6px">${pct(R.imp)}</span>`:''), R.impInformado?'percentual informado no Custeio':R.imp>0?`média das deduções da receita (impostos, taxas) dos meses de referência: ${pct(R.imp)} do faturamento`:'sem deduções lançadas nos meses de referência: informe o % no Custeio');
@@ -3378,15 +3418,30 @@ function odCmpHTML(O,c){ if(!(c.custo>0)) return '<p class="note">Lance materiai
   return `<div class="tscroll"><table class="t od-comp-t"><thead><tr><th></th><th class="r">Pelo multiplicador (atual)</th><th class="r">Por impostos + lucro</th><th class="r">Diferença</th></tr></thead><tbody>${rows}</tbody></table></div>${aviso}${btn}
     <p class="note" style="margin:6px 0 0">Preço por impostos + lucro = custo ÷ (1 − impostos ${pct(K.imp)} − lucro ${pct(K.luc)})${ok?` = ${brl(c.custo)} ÷ ${pct(K.d)}`:''}. Impostos: ${K.R.impInformado?'% informado no Custeio':'média das deduções da receita dos meses de referência (para fixar um %, use Custeio › Preço)'}. O lucro desejado é guardado neste orçamento; o padrão vem do Custeio.</p>`; }
 ACT.odAplicaAlvo=()=>{ const O=F.odEd; if(!O||O.status==='aprovado') return; const c=odCalc(O), K=odCmpCalc(O,c); if(!isFinite(K.B.preco)||!(c.custo>0)) return;
-  const m=K.B.preco/c.custo; OD_SET.forEach(s=>{ const x=O.setores[s.k]; if(x){ x.mult=Math.round(m*10000)/10000; x.preco=0; } });
+  const cs=c.custo-c.pec.custo, m=cs>0?(K.B.preco-c.pec.preco)/cs:K.B.preco/c.custo; OD_SET.forEach(s=>{ const x=O.setores[s.k]; if(x){ x.mult=Math.round(m*10000)/10000; x.preco=0; } });
   render(); toast('Multiplicador de '+fnum(m,2)+'× aplicado a todos os setores'); };
+
+/* Bloco de peças do orçamento detalhado (mesmo formato do orçamento do Dionatan) */
+function odPecasHTML(O,trav,dis,num){ if(!Array.isArray(O.pecas)||!O.pecas.length) O.pecas=[oq2Pec()];
+  const L=O.pecas.map((p,i)=>`<div class="oq2-pc"><div class="oq2-pc1"><input data-inp="odIn" data-k="pecas.${i}.desc" value="${esc(p.desc||'')}" placeholder="Descrição da peça ${i+1}" aria-label="Peça ${i+1}"${dis}>${trav?'':`<button type="button" class="oq2-x" data-act="odDelPec" data-i="${i}" aria-label="Remover peça">×</button>`}</div>
+    <div class="oq2-pc2"><div class="f"><label>Qtd</label>${num('pecas.'+i+'.qtd',fnum(p.qtd,2))}</div><div class="f"><label>Preço custo (un.)</label>${num('pecas.'+i+'.custo',fmoneyIn(p.custo),'placeholder="0,00"')}</div><div class="f"><label>Preço venda (un.)</label>${num('pecas.'+i+'.venda',fmoneyIn(p.venda),'placeholder="0,00"')}</div><div class="f"><label>Margem</label><span class="oq2-mg" id="odp_${i}">—</span></div></div></div>`).join('');
+  return `<section class="card oq-setor od-pecas" aria-label="Peças"><div class="oq-setor-h od-sh"><h2>Peças</h2><span class="hint">Custo e margem são internos; o PDF mostra só o preço de venda</span></div>
+    <div class="oq2-pcl od-pcl">${L}</div>${trav?'':`<button type="button" class="btn sm" data-act="odAddPec" style="align-self:flex-start">+ Peça</button>`}
+    <div class="od-pec-tot"><div class="oq-sub"><span>Total custo das peças</span><b id="od_pec_custo">—</b></div>
+    <div class="oq-preco"><small>Preço de venda das peças</small><div class="od-pv"><b id="od_pec_preco">—</b><span id="od_pec_marg"></span></div></div></div>
+    <p class="note" style="margin:0">Na aprovação, as peças entram na receita <b>Venda de peças</b>. O custo real entra depois, pela nota de compra (XML), em Peças e acessórios.</p></section>`; }
+ACT.odAddPec=()=>{ F.odEd.pecas.push(oq2Pec()); render(); const ls=document.querySelectorAll('[data-k^="pecas."][data-k$=".desc"]'); if(ls.length) ls[ls.length-1].focus(); };
+ACT.odDelPec=el=>{ F.odEd.pecas.splice(+el.dataset.i,1); if(!F.odEd.pecas.length) F.odEd.pecas.push(oq2Pec()); render(); };
+const OD_PEC={k:'pec', nome:'Peças', rec:/PECA/, novo:'Venda de peças'};
 function odAtualizar(){ const O=F.odEd; if(!O || !$('#odTotal')) return; const c=odCalc(O);
   OD_SET.forEach(s=>{ const x=O.setores[s.k], r=c[s.k];
     x.itens.forEach((it,i)=>{ const t=$('#odt_'+s.k+'_'+i); if(t) t.textContent=(+it.qtd||0)*(+it.custo||0)?brl((+it.qtd||0)*(+it.custo||0)):'—'; });
     $('#od_'+s.k+'_mat').textContent=brl(r.mat); $('#od_'+s.k+'_mo').textContent=brl(r.mo); $('#od_'+s.k+'_custo').textContent=brl(r.custo); $('#od_'+s.k+'_preco').textContent=brl(r.preco);
     const m=$('#od_'+s.k+'_marg'); if(m) m.textContent=r.preco>0?`margem ${brl(r.margem)} · ${pct(r.mp)}${r.manual&&r.custo>0?' · mult. '+fnum(r.preco/r.custo,2):''}`:''; });
+  (c.pec.linhas||[]).forEach((x,i)=>{ const e=$('#odp_'+i); if(e){ e.textContent=x.v||x.c?brl(x.m)+'\n'+pct(x.mp):'—'; e.classList.toggle('neg-t',x.m<0); } });
+  { const a=$('#od_pec_custo'), b=$('#od_pec_preco'), m=$('#od_pec_marg'); if(a) a.textContent=brl(c.pec.custo); if(b) b.textContent=brl(c.pec.preco); if(m) m.textContent=c.pec.preco>0?`margem ${brl(c.pec.margem)} · ${pct(c.pec.mp)}`:''; }
   const cp=$('#odComp'); if(cp) cp.innerHTML=odCompHTML(O,c); const cm=$('#odCmp'); if(cm) cm.innerHTML=odCmpHTML(O,c);
-  $('#odTotal').textContent=brl(c.total); $('#odDet').textContent=OD_SET.map(s=>s.nome+' '+brl(c[s.k].preco)).join('  +  ')+(c.total>0?`   ·   custo ${brl(c.custo)} · margem ${pct(c.mp)}`:'');
+  $('#odTotal').textContent=brl(c.total); $('#odDet').textContent=OD_SET.concat(c.pec.preco>0?[OD_PEC]:[]).map(s=>s.nome+' '+brl(c[s.k].preco)).join('  +  ')+(c.total>0?`   ·   custo ${brl(c.custo)} · margem ${pct(c.mp)}`:'');
   $('#odNumTop').textContent=O.numero||'—'; $('#odOrcTop').textContent=O.orcamentista||'—'; $('#odResumo').value=odResumo(O);
   const es=$('#odEstado'); if(es){ const ok=O.id&&F.odSalvo===odSnap(O); es.textContent=!O.id?'Ainda não salvo':ok?'Salvo':'Alterações não salvas'; es.classList.toggle('ok',!!ok); } }
 const _renderOd=render; render=function(){ _renderOd(); if(view==='orcamentos') odAtualizar(); };
@@ -3416,12 +3471,12 @@ ACT.odAddItem=el=>{ const k=el.dataset.s, x=F.odEd.setores[k]; x.itens.push(odIt
 ACT.odDelItem=el=>{ const x=F.odEd.setores[el.dataset.s]; x.itens.splice(+el.dataset.i,1); if(!x.itens.length) x.itens.push(odItem()); render(); };
 ACT.odHoraCus=el=>{ const k=el.dataset.s, h=odHoraCusteio(k); if(!h) return; F.odEd.setores[k].hora=h; render(); toast('Custo da hora atualizado pelo Custeio por setor'); };
 
-function odLimpo(O){ OD_SET.forEach(s=>{ const x=O.setores[s.k]; x.itens=x.itens.filter(i=>String(i.desc||'').trim() || +i.qtd || +i.custo); }); O.veiculo=odVeicTxt(O); }
+function odLimpo(O){ OD_SET.forEach(s=>{ const x=O.setores[s.k]; x.itens=x.itens.filter(i=>String(i.desc||'').trim() || +i.qtd || +i.custo); }); O.pecas=(O.pecas||[]).filter(p=>String(p.desc||'').trim()||+p.custo||+p.venda); O.veiculo=odVeicTxt(O); }
 function odSalvar(silencio){ const O=F.odEd; O.numero=String(O.numero||'').trim(); O.cliente=String(O.cliente||'').trim();
   if(!O.cliente){ toast('Informe o nome do cliente.'); const c=$('#od_cliente'); if(c) c.focus(); return false; }
   if(!O.numero){ toast('Informe o número do orçamento.'); return false; }
   if(S.orcamentos.some(x=>x.id!==O.id && x.numero===O.numero)){ if(!O.id){ O.numero=orcNumProx(); toast('Esse número já foi usado: o orçamento ficou com o Nº '+O.numero); } else { toast(`Já existe o orçamento nº ${O.numero}. Troque o número.`); return false; } }
-  odLimpo(O); const cp=clone(O); OD_SET.forEach(s=>{ if(!O.setores[s.k].itens.length) O.setores[s.k].itens.push(odItem()); });
+  odLimpo(O); const cp=clone(O); odGarantir(O);
   if(!O.id){ O.id=uid(); cp.id=O.id; } touch(O); cp.atualizadoEm=O.atualizadoEm; cp.criadoEm=O.criadoEm;
   const i=S.orcamentos.findIndex(x=>x.id===O.id); if(i<0) S.orcamentos.push(cp); else S.orcamentos[i]=cp;
   salvarCol('orcamentos'); F.odSalvo=odSnap(O); if(!silencio) toast(`Orçamento Nº ${O.numero} salvo`); return true; }
@@ -3430,12 +3485,12 @@ ACT.odPdf=async b=>{ const O=F.odEd; if(O.status!=='aprovado'){ if(!odSalvar(tru
 ACT.odWhats=()=>{ const ta=$('#odResumo'); ta.value=odResumo(F.odEd); const fb=()=>{ ta.focus(); ta.select(); toast('Selecionei o resumo: copie com Ctrl+C'); };
   try{ navigator.clipboard.writeText(ta.value).then(()=>toast('Resumo copiado. Cole no WhatsApp.'),fb); }catch(e){ fb(); } };
 ACT.odNovo=()=>{ F.odEd=odNovoObj(); F.odSalvo=''; F.odAnt=false; render(); window.scrollTo({top:0}); const c=$('#od_cliente'); if(c) c.focus(); toast('Novo orçamento detalhado Nº '+F.odEd.numero); };
-ACT.odDup=()=>{ const n=clone(F.odEd); ['id','lancIds','aprovadoEm','criadoEm','atualizadoEm'].forEach(k=>delete n[k]); n.numero=orcNumProx(); n.status='aberto'; n.data=hoje(); OD_SET.forEach(s=>{ const x=n.setores[s.k]=n.setores[s.k]||{itens:[odItem()],hora:odHoraPadrao(s.k),horas:0,mult:2.5,preco:0}; x.itens.forEach(i=>i.uid=uid()); });
+ACT.odDup=()=>{ const n=clone(F.odEd); ['id','lancIds','aprovadoEm','criadoEm','atualizadoEm'].forEach(k=>delete n[k]); n.numero=orcNumProx(); n.status='aberto'; n.data=hoje(); delete n.origem; odGarantir(n); OD_SET.forEach(s=>{ const x=n.setores[s.k]=n.setores[s.k]||{itens:[odItem()],hora:odHoraPadrao(s.k),horas:0,mult:2.5,preco:0}; x.itens.forEach(i=>i.uid=uid()); });
   F.odEd=n; F.odSalvo=''; render(); window.scrollTo({top:0}); toast('Cópia criada como Nº '+n.numero+'. Salve para guardar.'); };
 ACT.odAntT=()=>{ F.odAnt=!F.odAnt; render(); if(F.odAnt){ const p=document.querySelector('.oq-ant'); if(p) p.scrollIntoView({behavior:'smooth',block:'start'}); } };
-ACT.odAbrir=el=>{ const o=S.orcamentos.find(x=>x.id===el.dataset.id); if(!o) return; F.odEd=clone(o); OD_SET.forEach(s=>{ const x=F.odEd.setores[s.k]=F.odEd.setores[s.k]||{itens:[],hora:0,horas:0,mult:2.5,preco:0}; if(!x.itens.length) x.itens.push(odItem()); });
+ACT.odAbrir=el=>{ const o=S.orcamentos.find(x=>x.id===el.dataset.id); if(!o) return; F.odEd=odGarantir(clone(o)); OD_SET.forEach(s=>{ const x=F.odEd.setores[s.k]=F.odEd.setores[s.k]||{itens:[],hora:0,horas:0,mult:2.5,preco:0}; if(!x.itens.length) x.itens.push(odItem()); });
   F.odSalvo=odSnap(F.odEd); F.odAnt=false; render(); window.scrollTo({top:0}); toast('Orçamento Nº '+o.numero+' aberto'); };
-ACT.odAprovar=()=>{ const O=F.odEd; if(!String(O.cliente||'').trim()){ toast('Informe o nome do cliente.'); return; } if(!(odCalc(O).total>0)){ toast('O orçamento está sem valor.'); return; } if(!odSalvar(true)) return; aprovarOrc(O); };
+ACT.odAprovar=()=>{ const O=F.odEd; odLimpo(O); odGarantir(O); if(!String(O.cliente||'').trim()){ toast('Informe o nome do cliente.'); return; } if(!(odCalc(O).total>0)){ toast('O orçamento está sem valor.'); return; } if(!odSalvar(true)) return; aprovarOrc(O); };
 const odStatus=(st,msg)=>{ F.odEd.status=st; if(odSalvar(true)){ render(); toast(msg); } };
 ACT.odRecusar=()=>odStatus('recusado','Orçamento marcado como recusado');
 ACT.odReabrir=()=>odStatus('aberto','Orçamento reaberto');
@@ -3474,9 +3529,10 @@ async function odPDF(O,b){
       doc.setTextColor(...NAVY); doc.setFont('helvetica','normal'); doc.setFontSize(10.5); const ls=doc.splitTextToSize(SV.descricao,W-2*M); ls.forEach(l=>{ novaPag(5); doc.text(l,M,y); y+=5; }); y+=4; }
     /* Tabela de serviços por setor */
     const setores=OD_SET.filter(s=>c[s.k].preco>0);
-    const corpo=setores.map(s=>{ let t=s.nome; if(O.pdfItens){ const its=O.setores[s.k].itens.filter(i=>String(i.desc||'').trim()); if(its.length) t+='\n'+its.map(i=>'•  '+i.desc+(+i.qtd?'  ('+fnum(i.qtd,3)+(i.un?' '+i.un:'')+')':'')).join('\n'); } return [t, brl(c[s.k].preco)]; });
-    novaPag(30);
-    doc.autoTable({ startY:y, margin:{left:M, right:M, bottom:22}, theme:'plain', head:[['SERVIÇO','VALOR']], body:corpo,
+    const pecRows=(O.pecas||[]).filter(p=>String(p.desc||'').trim()&&(+p.qtd||0)*(+p.venda||0)>0).map(p=>['Peça: '+p.desc+(+p.qtd!==1?'  ('+fnum(p.qtd,2)+' × '+brl(p.venda)+')':''), brl((+p.qtd||0)*(+p.venda||0))]);
+    const corpo0=setores.map(s=>{ let t=s.nome; if(O.pdfItens){ const its=O.setores[s.k].itens.filter(i=>String(i.desc||'').trim()); if(its.length) t+='\n'+its.map(i=>'•  '+i.desc+(+i.qtd?'  ('+fnum(i.qtd,3)+(i.un?' '+i.un:'')+')':'')).join('\n'); } return [t, brl(c[s.k].preco)]; });
+    const corpo=corpo0.concat(pecRows); novaPag(30);
+    doc.autoTable({ startY:y, margin:{left:M, right:M, bottom:22}, theme:'plain', head:[['DESCRIÇÃO','VALOR']], body:corpo,
       styles:{font:'helvetica', fontSize:11.5, textColor:NAVY, cellPadding:{top:3.2,bottom:3.2,left:4,right:4}, lineColor:LINHA, lineWidth:{bottom:.3}, overflow:'linebreak'},
       headStyles:{fillColor:TEAL, textColor:255, fontStyle:'bold', fontSize:10, lineWidth:0}, columnStyles:{1:{halign:'right', cellWidth:44, fontStyle:'bold'}},
       didParseCell:d=>{ if(d.section==='head' && d.column.index===1) d.cell.styles.halign='right'; } });
