@@ -328,6 +328,7 @@ table.dre tr.res td:first-child{background:var(--accent-soft)}
 table.dre tr.grp td:first-child{padding-left:18px}
 table.dre tr.acc td{color:var(--muted)}
 table.dre tr.acc td:first-child{padding-left:34px}
+table.dre tr.acc.cta td:first-child{padding-left:52px;font-size:12px}
 table.dre tr.info td:first-child{font-style:italic}
 table.dre .tg{all:unset;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
 table.dre .tg::before{content:"▸";font-size:10px;color:var(--muted);transition:transform .15s}
@@ -1475,17 +1476,17 @@ ACT.dreCsv=()=>{ const {L}=dreLinhas(F.dreAno); const [m0,m1]=faixa(F.dreP); con
   baixar(new Blob([csv(rows)],{type:'text/csv'}), `DRE_Truckcar_${rotuloPer(F.dreP,F.dreAno).replace(/[^\wÀ-ú]+/g,'_')}.csv`).then(ok=>{ if(ok) toast('DRE exportado'); }); };
 
 /* ======================= FLUXO DE CAIXA ======================= */
-F.fluxoAno=new Date().getFullYear(); F.fluxoPrev=false; F.fluxoExp={}; F.fluxoP=novoPer();
+F.fluxoAno=new Date().getFullYear(); F.fluxoPrev=false; F.fluxoExp={}; F.fluxoTudo=false; F.fluxoP=novoPer();
 function saldoBanco(id){ const b=S.bancos.itens.find(x=>x.id===id); let s=b?parseNum(b.saldoInicial):0; S.lancamentos.forEach(l=>{ if(l.status==='pago' && l.pagamento && l.pagamento.bancoId===id) s+= (l.tipo==='R'?1:-1)*l.pagamento.valor; }); return s; }
 function movFluxo(l){ const h=hoje(); if(l.status==='cancelado') return null;
   if(l.status==='pago' && l.pagamento) return {data:l.pagamento.data, v:l.pagamento.valor, prev:false};
   if(F.fluxoPrev) return {data:l.vencimento<h?h:l.vencimento, v:l.valor, prev:true}; return null; }
 function itensFluxo(spec, ano, m0, m1){ const out=[];
   S.lancamentos.forEach(l=>{ const mv_=movFluxo(l); if(!mv_ || +mv_.data.slice(0,4)!==ano) return; const m=+mv_.data.slice(5,7)-1; if(m<m0||m>m1) return; if(spec.tipo && l.tipo!==spec.tipo) return;
-    partes(l).forEach(p=>{ const x=IDX()[p.contaId]; const sec=x?x.secao:'_sem', gid=x?x.g.id:'_sem'; if(spec.sec && sec!==spec.sec) return; if(spec.gid && gid!==spec.gid) return;
+    partes(l).forEach(p=>{ const x=IDX()[p.contaId]; const sec=x?x.secao:'_sem', gid=x?x.g.id:'_sem'; if(spec.sec && sec!==spec.sec) return; if(spec.gid && gid!==spec.gid) return; if(spec.cid && (x?p.contaId:'_sem')!==spec.cid) return;
       out.push({l, valor:l.valor?mv_.v*p.valor/l.valor:0, contaId:p.contaId, data:mv_.data, prev:mv_.prev}); }); });
   return out; }
-let FLX_CACHE=null;
+let FLX_CACHE=null, FLX_KEYS=[];
 
 /* ---------- Fluxo de caixa diário ---------- */
 F.fluxoVis='mensal'; F.fluxoMes=MES_ATUAL; F.fluxoSoMov=false;
@@ -1495,7 +1496,7 @@ function fluxoTopo(ano){
   return `<div class="bar"><div class="row">${anoSelect('fluxoAno',ano,'fluxoAno')}
       <div class="f"><label>Visão</label><div class="chips" role="group" aria-label="Visão">${vis('mensal','Mensal')}${vis('diario','Diária')}</div></div>
       ${F.fluxoVis==='diario'? `<div class="f"><label for="fxMes">Mês</label><select id="fxMes" data-chg="fluxoMes" style="width:auto;min-width:160px">${MESES.map((m,i)=>`<option value="${i}"${i===F.fluxoMes?' selected':''}>${m}</option>`).join('')}</select></div>` : periodoUI('fluxoP')}</div>
-    <div class="row">${botoesExp('fluxo')}${S.bancos.itens.length?`<button class="btn" data-act="saldosIni">Saldos iniciais</button>`:`<button class="btn primary" data-go="bancos">Cadastrar contas bancárias</button>`}</div></div>
+    <div class="row">${F.fluxoVis==='diario'?'':`<button class="btn" data-act="fluxoTudo">${F.fluxoTudo?'Recolher contas':'Abrir todas as contas'}</button>`}${botoesExp('fluxo')}${S.bancos.itens.length?`<button class="btn" data-act="saldosIni">Saldos iniciais</button>`:`<button class="btn primary" data-go="bancos">Cadastrar contas bancárias</button>`}</div></div>
   <div class="row"><div class="chips" role="group" aria-label="Realizado ou previsto"><button type="button" data-act="fluxoModo" data-v="0" aria-pressed="${!F.fluxoPrev}">Realizado</button><button type="button" data-act="fluxoModo" data-v="1" aria-pressed="${F.fluxoPrev}">Realizado + previsto</button></div>
     ${F.fluxoVis==='diario'?`<label class="check"><input type="checkbox" data-chg="fluxoSoMov" ${F.fluxoSoMov?'checked':''}> Mostrar só dias com movimento</label>`:''}</div>`;
 }
@@ -1537,12 +1538,12 @@ ACT.drillD=el=>{ const data=el.dataset.d, t=el.dataset.t; const out=[];
 function vFluxo(){
   if(F.fluxoVis==='diario') return vFluxoDiario();
   const ano=F.fluxoAno, Z=()=>Array(12).fill(0); const [m0,m1]=faixa(F.fluxoP); const MS=[]; for(let i=m0;i<=m1;i++) MS.push(i); const varios=MS.length>1;
-  const ent={}, sai={}; const reg=(obj,sec,gid,m,v)=>{ obj[sec]=obj[sec]||{tot:Z(),g:{}}; obj[sec].tot[m]+=v; (obj[sec].g[gid]=obj[sec].g[gid]||Z())[m]+=v; };
+  const ent={}, sai={}; const reg=(obj,sec,gid,cid,m,v)=>{ obj[sec]=obj[sec]||{tot:Z(),g:{},c:{}}; obj[sec].tot[m]+=v; (obj[sec].g[gid]=obj[sec].g[gid]||Z())[m]+=v; const cg=obj[sec].c[gid]=obj[sec].c[gid]||{}; (cg[cid]=cg[cid]||Z())[m]+=v; };
   let antes=S.bancos.itens.reduce((a,b)=>a+parseNum(b.saldoInicial),0);
   S.lancamentos.forEach(l=>{ const mv_=movFluxo(l); if(!mv_) return; const a=+mv_.data.slice(0,4); const sinal=l.tipo==='R'?1:-1;
     if(a<ano){ if(!mv_.prev) antes+=sinal*mv_.v; return; } if(a>ano) return;
     const m=+mv_.data.slice(5,7)-1;
-    partes(l).forEach(p=>{ const x=IDX()[p.contaId]; const sec=x?x.secao:'_sem', gid=x?x.g.id:'_sem'; reg(l.tipo==='R'?ent:sai, sec, gid, m, l.valor?mv_.v*p.valor/l.valor:0); }); });
+    partes(l).forEach(p=>{ const x=IDX()[p.contaId]; const sec=x?x.secao:'_sem', gid=x?x.g.id:'_sem'; reg(l.tipo==='R'?ent:sai, sec, gid, x?p.contaId:'_sem', m, l.valor?mv_.v*p.valor/l.valor:0); }); });
   const somaObj=o=>Object.values(o).reduce((a,s)=>a.map((x,i)=>x+s.tot[i]),Z());
   const E=somaObj(ent), Sa=somaObj(sai);
   const ini=Z(), fim=Z(); let s=antes; for(let i=0;i<12;i++){ ini[i]=s; s+=E[i]-Sa[i]; fim[i]=s; }
@@ -1552,9 +1553,14 @@ function vFluxo(){
   const cel=(v,si,m)=> (si>=0 && v)? `<td class="v dr ${v<0?'neg':''}" data-act="drillF" data-s="${si}" data-m="${m}" title="Ver lançamentos">${fmoney(v)}</td>` : `<td class="v ${v<0?'neg':''}">${v?fmoney(v):'–'}</td>`;
   const linha=(lbl,vals,cls,spec,totOverride)=>{ const si=spec?specs.push(spec)-1:-1; const tot=totOverride!==undefined?totOverride:soma(vals);
     return `<tr class="${cls}"><td>${lbl}</td>${MS.map(i=>cel(vals[i],si,i)).join('')}${varios?(totOverride===null?'<td class="v"></td>':cel(tot,totOverride!==undefined?-1:si,'T')):''}</tr>`; };
-  const bloco=(obj,tipo)=>ORDEM.concat('_sem').filter(sec=>obj[sec]).map(sec=>{ const o=obj[sec]; const k='s:'+sec; const ab=F.fluxoExp[k];
+  const cnome=cid=>{ const x=IDX()[cid]; return x?x.c.nome:'Sem categoria'; };
+  FLX_KEYS=[]; const abre=k=>{ FLX_KEYS.push(k); return F.fluxoTudo || F.fluxoExp[k]; };
+  const bloco=(obj,tipo)=>ORDEM.concat('_sem').filter(sec=>obj[sec]).map(sec=>{ const o=obj[sec]; const k='s:'+sec; const ab=abre(k);
     let h=linha(`<button class="tg" data-act="fluxoTg" data-k="${k}" aria-expanded="${!!ab}">${esc(sec==='_sem'?'Sem categoria':SECOES[sec].nome)}</button>`, o.tot, 'grp', {tipo,sec});
-    if(ab) h+=Object.keys(o.g).map(g=>linha(esc(gnome(g)),o.g[g],'acc',{tipo,sec,gid:g})).join('');
+    if(ab) h+=Object.keys(o.g).sort((a,b)=>gnome(a).localeCompare(gnome(b),'pt-BR')).map(g=>{ const kg='g:'+tipo+':'+g, abg=abre(kg), cs=o.c[g]||{};
+      let hg=linha(`<button class="tg" data-act="fluxoTg" data-k="${kg}" aria-expanded="${!!abg}">${esc(gnome(g))}</button>`,o.g[g],'acc',{tipo,sec,gid:g});
+      if(abg) hg+=Object.keys(cs).sort((a,b)=>cnome(a).localeCompare(cnome(b),'pt-BR')).map(c=>linha(esc(cnome(c)),cs[c],'acc cta',{tipo,sec,gid:g,cid:c})).join('');
+      return hg; }).join('');
     return h; }).join('');
   const nada=!Object.keys(ent).length && !Object.keys(sai).length;
   const saldoMes=E.map((v,i)=>v-Sa[i]);
@@ -1572,11 +1578,12 @@ function vFluxo(){
 }
 ACT.drillF=el=>{ if(!FLX_CACHE) return; const {specs,ano,m0,m1}=FLX_CACHE; const sp=specs[+el.dataset.s]; if(!sp) return;
   const t=el.dataset.m==='T'; const a=t?m0:+el.dataset.m, b=t?m1:+el.dataset.m;
-  const nome=sp.gid? (S.plano.grupos.find(g=>g.id===sp.gid)||{}).nome||'Sem categoria' : sp.sec? (sp.sec==='_sem'?'Sem categoria':SECOES[sp.sec].nome) : sp.tipo==='R'?'Entradas':sp.tipo==='P'?'Saídas':'Movimentações';
+  const nome=sp.cid? (IDX()[sp.cid]||{c:{nome:'Sem categoria'}}).c.nome : sp.gid? (S.plano.grupos.find(g=>g.id===sp.gid)||{}).nome||'Sem categoria' : sp.sec? (sp.sec==='_sem'?'Sem categoria':SECOES[sp.sec].nome) : sp.tipo==='R'?'Entradas':sp.tipo==='P'?'Saídas':'Movimentações';
   abrirDetalhe(nome, itensFluxo(sp,ano,a,b), `Fluxo de caixa · ${t?rotuloPer(F.fluxoP,ano):MESES[a]+'/'+ano} · ${F.fluxoPrev?'realizado + previsto':'realizado'}`); };
 CHG.fluxoAno=el=>{ F.fluxoAno=+el.value; render(); };
 ACT.fluxoModo=el=>{ F.fluxoPrev=el.dataset.v==='1'; render(); };
-ACT.fluxoTg=el=>{ const k=el.dataset.k; F.fluxoExp[k]=!F.fluxoExp[k]; render(); };
+ACT.fluxoTudo=()=>{ F.fluxoTudo=!F.fluxoTudo; F.fluxoExp={}; render(); };
+ACT.fluxoTg=el=>{ const k=el.dataset.k; if(F.fluxoTudo){ F.fluxoTudo=false; F.fluxoExp={}; FLX_KEYS.forEach(x=>F.fluxoExp[x]=true); F.fluxoExp[k]=false; } else F.fluxoExp[k]=!F.fluxoExp[k]; render(); };
 
 /* ======================= RELATÓRIOS ======================= */
 F.rel={de:hoje().slice(0,4)+'-01-01', ate:fimMes(hoje()), tipo:'insumos', status:'todos', base:'competencia', exp:{}, det:false};
