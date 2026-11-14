@@ -307,6 +307,7 @@ table.t tfoot td{font-weight:600;border-top:2px solid var(--line)}
 .pill{display:inline-block;font:600 11px var(--f-body);letter-spacing:.05em;text-transform:uppercase;padding:3px 8px;border-radius:999px;white-space:nowrap;background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
 .pill.aberto{background:var(--accent-soft);color:var(--accent);border-color:transparent}
 .pill.vencido{background:var(--neg-soft);color:var(--neg);border-color:transparent}
+.btn.amber{background:#f5b82e;border-color:#e0a41c;color:#1f2430;font-weight:600}.btn.amber:hover{background:#eaa917;border-color:#d39613}
 .selcell{width:34px;text-align:center;cursor:default} .selcell input,.bb-t input[type=checkbox]{width:18px;height:18px;min-height:0;accent-color:var(--accent);cursor:pointer}
 tr.sel td{background:var(--accent-soft)}
 .selbar{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;margin:0 0 10px;border-radius:12px;background:var(--ink);color:var(--surface)}
@@ -956,9 +957,9 @@ function filtrarLanc(t){
   }).sort((a,b)=>a.vencimento.localeCompare(b.vencimento) || nomePessoa(a).localeCompare(nomePessoa(b)));
 }
 function botoesLanc(t){
-  if(t!=='P') return `<div class="row"><button class="btn" data-act="baixaBloco" data-t="R">Recebimento em bloco</button><button class="btn primary" data-act="novoR">Nova conta a receber</button></div>`;
+  if(t!=='P') return `<div class="row"><button class="btn amber" data-act="baixaBloco" data-t="R">Recebimento em bloco</button><button class="btn primary" data-act="novoR">Nova conta a receber</button></div>`;
   return `<div class="row"><label class="btn primary" for="xmlFile" style="cursor:pointer">Importar XML da NF-e</label><input id="xmlFile" type="file" accept=".xml,.json,text/xml,application/xml,application/json" hidden data-chg="importarNota">
-    <button class="btn" data-act="baixaBloco" data-t="P">Baixa em bloco</button><button class="btn primary" data-act="novoP">Nova conta a pagar</button></div>`;
+    <button class="btn amber" data-act="baixaBloco" data-t="P">Baixa em bloco</button><button class="btn primary" data-act="novoP">Nova conta a pagar</button></div>`;
 }
 /* Filtros de múltipla escolha (cliente/fornecedor, forma, conta bancária) */
 const arrF=x=>Array.isArray(x)?x:(x?[x]:[]);
