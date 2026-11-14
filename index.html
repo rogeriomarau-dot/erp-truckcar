@@ -329,6 +329,8 @@ table.dre tr.grp td:first-child{padding-left:18px}
 table.dre tr.acc td{color:var(--muted)}
 table.dre tr.acc td:first-child{padding-left:34px}
 table.dre tr.acc.cta td:first-child{padding-left:52px;font-size:12px}
+table.dre tr.fsec td,table.dre tr.fsec td:first-child{background:color-mix(in srgb,var(--accent) 14%,var(--surface));font-weight:600;color:var(--ink)}
+table.dre tr.fgrp td,table.dre tr.fgrp td:first-child{background:color-mix(in srgb,var(--accent) 6%,var(--surface));font-weight:600;color:var(--ink)}
 table.dre tr.info td:first-child{font-style:italic}
 table.dre .tg{all:unset;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
 table.dre .tg::before{content:"▸";font-size:10px;color:var(--muted);transition:transform .15s}
@@ -1556,9 +1558,9 @@ function vFluxo(){
   const cnome=cid=>{ const x=IDX()[cid]; return x?x.c.nome:'Sem categoria'; };
   FLX_KEYS=[]; const abre=k=>{ FLX_KEYS.push(k); return F.fluxoTudo || F.fluxoExp[k]; };
   const bloco=(obj,tipo)=>ORDEM.concat('_sem').filter(sec=>obj[sec]).map(sec=>{ const o=obj[sec]; const k='s:'+sec; const ab=abre(k);
-    let h=linha(`<button class="tg" data-act="fluxoTg" data-k="${k}" aria-expanded="${!!ab}">${esc(sec==='_sem'?'Sem categoria':SECOES[sec].nome)}</button>`, o.tot, 'grp', {tipo,sec});
+    let h=linha(`<button class="tg" data-act="fluxoTg" data-k="${k}" aria-expanded="${!!ab}">${esc(sec==='_sem'?'Sem categoria':SECOES[sec].nome)}</button>`, o.tot, 'grp fsec', {tipo,sec});
     if(ab) h+=Object.keys(o.g).sort((a,b)=>gnome(a).localeCompare(gnome(b),'pt-BR')).map(g=>{ const kg='g:'+tipo+':'+g, abg=abre(kg), cs=o.c[g]||{};
-      let hg=linha(`<button class="tg" data-act="fluxoTg" data-k="${kg}" aria-expanded="${!!abg}">${esc(gnome(g))}</button>`,o.g[g],'acc',{tipo,sec,gid:g});
+      let hg=linha(`<button class="tg" data-act="fluxoTg" data-k="${kg}" aria-expanded="${!!abg}">${esc(gnome(g))}</button>`,o.g[g],'acc fgrp',{tipo,sec,gid:g});
       if(abg) hg+=Object.keys(cs).sort((a,b)=>cnome(a).localeCompare(cnome(b),'pt-BR')).map(c=>linha(esc(cnome(c)),cs[c],'acc cta',{tipo,sec,gid:g,cid:c})).join('');
       return hg; }).join('');
     return h; }).join('');
