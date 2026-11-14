@@ -1145,7 +1145,7 @@ function formLanc(t,l){
     ${P?`<div class="f ${novo?'s2':'s4'}" id="mBoletoBox"><label for="mBoleto">Linha digitável do boleto</label><input id="mBoleto" value="${esc(x.boleto||'')}" inputmode="numeric"></div>`:`<div class="f ${novo?'s2':'s4'}"></div>`}
     <div class="f s6"><label for="mObs">Observações</label><textarea id="mObs">${esc(x.obs||'')}</textarea></div>
     ${P? (x.notaId? `<p class="note" style="grid-column:span 6;margin:0">Teto de gastos: esta conta veio de uma nota com itens. Marque os itens do teto em <b>Ver itens da nota</b>.</p>`
-      : `<label class="check teto-lbl" style="grid-column:span 6"><input type="checkbox" id="mTeto"${x.teto?' checked':''}> <span><b>Faz parte do teto de gastos variáveis</b> (teto de ${brl(tetoValor())}/mês)${novo?' · com itens, marca todos os itens da compra':''}</span></label>`) :''}
+      : `<label class="check teto-lbl" style="grid-column:span 6"><input type="checkbox" id="mTeto"${x.teto?' checked':''}> <span><b>Faz parte do teto de gastos variáveis</b> (teto de ${brl(tetoValor())}/mês)${novo?' · com itens, marca todos; para marcar só alguns, use a coluna Teto de cada item':''}</span></label>`) :''}
     ${novo?`<div class="f s6"><label class="check" for="mPago"><input type="checkbox" id="mPago"> Já foi ${P?'pago':'recebido'} (baixar agora)</label></div>
     <div class="fields s6" id="mPagoBox" hidden style="grid-column:span 6">
       <div class="f s2"><label for="mPData">Data do ${P?'pagamento':'recebimento'}</label><input id="mPData" type="date" value="${hoje()}"></div>
@@ -1177,16 +1177,17 @@ function formLanc(t,l){
       <div class="row" style="align-items:flex-end;gap:8px"><div class="f" style="flex:1 1 280px"><label for="mInsQ">Itens comprados (insumos do cadastro) · opcional</label>
         <input id="mInsQ" list="mInsList" placeholder="Digite para buscar o insumo e escolha na lista" autocomplete="off"><datalist id="mInsList">${ord.map(i=>`<option value="${esc(i.descricao+(nomeForn(i.fornecedorId)?' · '+nomeForn(i.fornecedorId):''))}">`).join('')}</datalist></div>
         <button type="button" class="btn sm primary" data-m="insAdd">+ Adicionar</button><button type="button" class="btn sm primary" data-m="insNovo">+ Item não cadastrado</button></div>
-      ${its.length?`<div class="tscroll" style="margin-top:8px"><table class="t"><thead><tr><th>Item</th><th class="r">Qtd</th><th>Un</th><th class="r">Unitário</th><th class="r">Total</th><th>Categoria</th><th></th></tr></thead><tbody>
+      ${its.length?`<div class="tscroll" style="margin-top:8px"><table class="t"><thead><tr><th>Item</th><th class="r">Qtd</th><th>Un</th><th class="r">Unitário</th><th class="r">Total</th><th>Categoria</th><th title="Faz parte do teto de gastos">Teto</th><th></th></tr></thead><tbody>
         ${its.map((it,k)=>`<tr><td style="min-width:200px">${it.insumoId?`<div class="cell-main">${esc(it.descricao)}</div>`:`<input value="${esc(it.descricao)}" data-it="${k}" data-ik="descricao" placeholder="Descrição do item" aria-label="Descrição"><div class="cell-sub">novo: entra no cadastro de insumos</div>`}</td>
           <td style="min-width:70px"><input class="n" value="${fnum(it.qtd)}" data-it="${k}" data-ik="qtd" inputmode="decimal" aria-label="Quantidade"></td>
           <td style="min-width:60px">${it.insumoId?`<span class="cell-sub">${esc(it.un)}</span>`:`<input value="${esc(it.un)}" data-it="${k}" data-ik="un" aria-label="Unidade">`}</td>
           <td style="min-width:100px"><input class="n" value="${fmoneyIn(it.vUnit)}" data-it="${k}" data-ik="vUnit" inputmode="decimal" aria-label="Valor unitário"></td>
           <td class="r" data-itot="${k}">${brl(it.vTotal)}</td>
           <td style="min-width:200px"><select data-it="${k}" data-ik="cat" aria-label="Categoria"><option value="">Escolha</option>${contasOptions('P',it.cat)}</select></td>
+          <td style="text-align:center"><input type="checkbox" class="teto-ck" data-it="${k}" data-ik="teto" aria-label="Item do teto de gastos"${it.teto?' checked':''}></td>
           <td><button type="button" class="x" data-m="insDel" data-i="${k}" aria-label="Remover item">×</button></td></tr>`).join('')}
-        </tbody><tfoot><tr><td colspan="4">${its.length} item(ns)</td><td class="r" id="mItensTot">${brl(totItens())}</td><td colspan="2"></td></tr></tfoot></table></div>
-        <p class="note" style="margin:6px 0 0">Com itens, o valor total é a soma dos itens e cada item vai para a sua categoria (o DRE separa). O último preço do insumo é atualizado.</p>`:''}</div>`; }
+        </tbody><tfoot><tr><td colspan="4">${its.length} item(ns)</td><td class="r" id="mItensTot">${brl(totItens())}</td><td colspan="3"></td></tr></tfoot></table></div>
+        <p class="note" style="margin:6px 0 0">Com itens, o valor total é a soma dos itens e cada item vai para a sua categoria (o DRE separa). O último preço do insumo é atualizado. Marque em <b>Teto</b> só os itens que entram no teto de gastos.</p>`:''}</div>`; }
   function desenharItens(){ const b=$('#sheet').querySelector('#mItensBox'); if(!b) return; b.innerHTML=itensHTML(); syncItens(); }
   function syncItens(){ const sh=$('#sheet'), v=sh.querySelector('#mValor'), cb=sh.querySelector('#mContaBox'); if(!v) return;
     if(its.length){ v.value=fmoneyIn(totItens()); v.readOnly=true; if(cb) cb.hidden=true; } else { v.readOnly=false; if(cb) cb.hidden=false; }
@@ -1195,7 +1196,7 @@ function formLanc(t,l){
     if(its.some(i=>i.insumoId===ins.id && i._t && Date.now()-i._t<800)) return;
     its.push({_t:Date.now(), insumoId:ins.id, descricao:ins.descricao, un:ins.un||'UN', qtd:1, vUnit:+ins.ultimoPreco||0, vTotal:Math.round((+ins.ultimoPreco||0)*100)/100, cat:ins.contaId||mv('mConta')||''});
     desenharItens(); gerarParc(); const q=$('#sheet').querySelector('#mInsQ'); if(q) q.value=''; }
-  function editItem(el){ const it=its[+el.dataset.it], k=el.dataset.ik; it[k]=(k==='qtd'||k==='vUnit')?parseNum(el.value):el.value;
+  function editItem(el){ const it=its[+el.dataset.it], k=el.dataset.ik; if(k==='teto'){ it.teto=el.checked; return; } it[k]=(k==='qtd'||k==='vUnit')?parseNum(el.value):el.value;
     if(k==='qtd'||k==='vUnit'){ it.vTotal=Math.round(it.qtd*it.vUnit*100)/100; const c=$('#sheet').querySelector(`[data-itot="${el.dataset.it}"]`); if(c) c.textContent=brl(it.vTotal); syncItens(); gerarParc(); } }
   const valida=d=>{ if(!d.pessoa) return (P?'Informe o fornecedor.':'Informe o cliente.');
     if(its.length){ if(its.some(i=>!String(i.descricao).trim())) return 'Informe a descrição de todos os itens.'; if(its.some(i=>!(i.vTotal>0))) return 'Todos os itens precisam ter quantidade e valor.'; if(its.some(i=>!i.cat)) return 'Escolha a categoria de todos os itens.'; }
@@ -1227,7 +1228,7 @@ function formLanc(t,l){
         S.lancamentos.push(r); lancIds.push(r.id);
       }
       if(notaId){ S.notas.push(touch({id:notaId, fornecedorId:p.id, fornecedorNome:p.nome, numero:d.documento.replace(/^\s*(nf|nota)\s*/i,'')||'', serie:'', emissao:d.competencia, chave:'', total:d.valor, forma:d.forma, manual:true,
-          itens:its.map(i=>({codigo:'', descricao:String(i.descricao).trim(), ncm:'', un:i.un, qtd:i.qtd, vUnit:i.vUnit, vTotal:i.vTotal, contaId:i.cat, insumoId:i.insumoId, teto:tetoCk})),
+          itens:its.map(i=>({codigo:'', descricao:String(i.descricao).trim(), ncm:'', un:i.un, qtd:i.qtd, vUnit:i.vUnit, vTotal:i.vTotal, contaId:i.cat, insumoId:i.insumoId, teto:!!(i.teto||tetoCk)})),
           duplicatas:lancIds.map(id=>{ const l=S.lancamentos.find(z=>z.id===id); return {numero:l.parcela||'', venc:l.vencimento, valor:l.valor}; }), lancIds}));
         salvarCol('insumos'); salvarCol('notas'); }
       salvarCol('lancamentos'); fecharModal(); toast(n>1?`${n} parcelas lançadas`:'Lançamento salvo'+(its.length?` com ${its.length} item(ns)`:''));
