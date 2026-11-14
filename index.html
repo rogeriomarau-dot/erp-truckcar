@@ -632,7 +632,7 @@ const natConta=id=>{ const x=IDX()[id]; return x? SECOES[x.secao].nat : 'P'; };
 
 /* Lançamentos */
 function stL(l){ if(l.status==='cancelado') return 'cancelado'; if(l.status==='pago') return 'pago'; return (l.vencimento<hoje())?'vencido':'aberto'; }
-const ST_NOME={P:{aberto:'Em aberto',vencido:'Vencido',pago:'Pago',cancelado:'Cancelado'},R:{aberto:'A receber',vencido:'Vencido',pago:'Recebido',cancelado:'Cancelado'}};
+const ST_NOME={P:{aberto:'A vencer',vencido:'Vencido',pago:'Pago',cancelado:'Cancelado'},R:{aberto:'A receber',vencido:'Vencido',pago:'Recebido',cancelado:'Cancelado'}};
 const FORMAS=['Boleto','PIX','Transferência','Dinheiro','Cartão de crédito','Cartão de débito','Débito automático','Cheque'];
 function FORMAS_PADRAO(){ return ({itens:[['Dinheiro','ambos'],['PIX','ambos'],['Cartão de débito','ambos'],['Cartão de crédito','ambos'],['Boleto','ambos'],['Transferência','ambos'],['Débito automático','pagar'],['Cheque','ambos']].map(([nome,uso],i)=>({id:'fp'+(i+1), nome, uso, ativo:true}))}); }
 const pessoas=t=>t==='P'?S.fornecedores:S.clientes;
@@ -1012,7 +1012,7 @@ function vLanc(t){
     <div class="f" style="flex:0 1 160px"><label for="fIncAte${t}">até</label><input id="fIncAte${t}" type="date" value="${f.incAte}" data-chg="linc" data-k="incAte" data-t="${t}"></div>
     <button type="button" class="btn sm ghost" data-act="lLimpar" data-t="${t}" style="align-self:end">Limpar filtros</button>
   </div>
-  <div class="chips" role="group" aria-label="Situação" style="margin-top:10px">${chip('todos','Todos')}${chip('aberto',P?'Em aberto':'A receber')}${chip('vencido','Vencidos')}${chip('pago',P?'Pagos / baixados':'Recebidos')}${chip('cancelado','Cancelados')}</div></div>
+  <div class="chips" role="group" aria-label="Situação" style="margin-top:10px">${chip('todos','Todos')}${chip('aberto',P?'A vencer':'A receber')}${chip('vencido','Vencidos')}${chip('pago',P?'Pagos / baixados':'Recebidos')}${chip('cancelado','Cancelados')}</div></div>
   <div id="lres">${lancRes(t)}</div>`;
 }
 function lancRes(t){
@@ -1022,7 +1022,7 @@ function lancRes(t){
   if(!S.lancamentos.some(l=>l.tipo===t)) return `<div class="card">${vazio(P?'Nenhuma conta a pagar lançada':'Nenhuma conta a receber lançada', P?'Importe o XML da NF-e que o fornecedor envia, lance uma nota com itens ou uma despesa avulsa (aluguel, energia, serviços).':'Lance os valores a receber dos clientes por setor de serviço.', `<button class="btn primary" data-act="novo${t}">${P?'Lançar primeira conta a pagar':'Lançar primeira conta a receber'}</button>`)}</div>`;
   return `
   <div class="tiles">
-    <div class="tile"><small>${P?'Em aberto':'A receber'}</small><b>${brl(aberto)}</b><span>${itens.filter(l=>stL(l)==='aberto').length} título(s) no filtro</span></div>
+    <div class="tile"><small>${P?'A vencer':'A receber'}</small><b>${brl(aberto)}</b><span>${itens.filter(l=>stL(l)==='aberto').length} título(s) no filtro</span></div>
     <div class="tile ${venc?'neg':''}"><small>Vencidos</small><b class="${venc?'neg-t':''}">${brl(venc)}</b><span>${itens.filter(l=>stL(l)==='vencido').length} título(s) no filtro</span></div>
     <div class="tile pos"><small>${P?'Pagos / baixados':'Recebidos'}</small><b>${brl(pago)}</b><span>${itens.filter(l=>stL(l)==='pago').length} título(s) no filtro</span></div>
   </div>
@@ -2257,7 +2257,7 @@ function expTela(o){
 const rotPerLanc=t=>{ const f=F[t]; return f.periodo==='todos'?'Vencimento: todas as datas':'Vencimento: '+dataBR(f.de)+' a '+dataBR(f.ate); };
 ['P','R'].forEach(t=>{ REL_EXP[t==='P'?'pagar':'receber']=()=>{ const f=F[t], P=t==='P';
   return expTela({titulo:P?'Contas a pagar':'Contas a receber', arquivo:(P?'Contas_a_pagar_':'Contas_a_receber_')+hoje(), paisagem:true, total:'título(s)',
-    filtros:[rotPerLanc(t), 'Situação: '+({todos:'todas',aberto:P?'em aberto':'a receber',vencido:'vencidos',pago:P?'pagos':'recebidos',cancelado:'cancelados'})[f.status], f.q?'Busca: "'+f.q+'"':''].filter(Boolean)}); }; });
+    filtros:[rotPerLanc(t), 'Situação: '+({todos:'todas',aberto:P?'a vencer':'a receber',vencido:'vencidos',pago:P?'pagos':'recebidos',cancelado:'cancelados'})[f.status], f.q?'Busca: "'+f.q+'"':''].filter(Boolean)}); }; });
 REL_EXP.fluxo=()=>{ const ano=F.fluxoAno, prev=F.fluxoPrev?'Realizado + previsto':'Realizado';
   if(F.fluxoVis==='diario') return expTela({sel:'table.fxd', titulo:'Fluxo de caixa diário', arquivo:'Fluxo_de_caixa_diario_'+MESES[F.fluxoMes]+'_'+ano, filtros:['Mês: '+MESES[F.fluxoMes]+'/'+ano, prev, F.fluxoSoMov?'Só dias com movimento':''].filter(Boolean)});
   return expTela({sel:'table.dre', titulo:'Fluxo de caixa', arquivo:'Fluxo_de_caixa_'+rotuloPer(F.fluxoP,ano).replace(/[º\/ ]+/g,'_'), filtros:['Período: '+rotuloPer(F.fluxoP,ano), prev, 'Grupos abertos na tela saem detalhados'],
