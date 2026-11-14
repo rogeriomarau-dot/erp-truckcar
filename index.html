@@ -338,6 +338,11 @@ table.dre tr.fds td{background:var(--surface-2);color:var(--muted)}
 table.dre tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weight:600;border-top:2px solid var(--line)}
 table.fxd td:first-child{min-width:140px}
 table.dre td.dr{cursor:pointer}
+table.dre .tg-mes{all:unset;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+table.dre .tg-mes:hover{color:var(--accent)}
+table.dre .tg-mes:focus-visible{outline:2px solid var(--accent)}
+table.dre tr.pe td{font-weight:700;border-top:2px solid var(--line)}
+table.dre td.pos-t{color:var(--pos)}
 table.dre td.dr:hover{text-decoration:underline;color:var(--accent)}
 table.dre td.dr:focus-visible{outline:2px solid var(--accent)}
 
@@ -2352,8 +2357,9 @@ function vPE(){
   const ano=F.peAno, [m0,m1]=faixa(F.peP), R=calcPE(ano,m0,m1), T=R.T, rot=rotuloPer(F.peP,ano);
   const lin=(k)=>R.cl[k].tot?`<tr class="click" data-act="peDet" data-k="${k}"><td style="padding-left:22px">${esc(CLASSES[k])} <span class="cell-sub">· ${R.cl[k].contas.length} conta(s)</span></td><td class="r">${brl(R.cl[k].tot)}</td><td class="r">${pct(R.rec?R.cl[k].tot/R.rec:0)}</td></tr>`:'';
   const vks=Object.keys(CLASSES).filter(k=>T[k]==='V'), fks=Object.keys(CLASSES).filter(k=>T[k]==='F');
-  const semRec=!R.rec;
-  return `<div class="bar"><div class="row">${anoSelect('peAnoSel',ano,'peAno')}${periodoUI('peP')}</div>${botoesExp('pe')}</div>
+  const semRec=!R.rec, varios=m1>m0, mensal=varios&&F.peVis==='mensal';
+  const visUI=varios?`<div class="f"><label>Visão</label><div class="chips" role="group" aria-label="Visão"><button type="button" data-act="peVis" data-v="mensal" aria-pressed="${mensal}">Mês a mês</button><button type="button" data-act="peVis" data-v="cons" aria-pressed="${!mensal}">Consolidado</button></div></div>`:'';
+  return `<div class="bar"><div class="row">${anoSelect('peAnoSel',ano,'peAno')}${periodoUI('peP')}${visUI}</div>${botoesExp('pe')}</div>
   ${semRec&&!R.cv&&!R.cf? `<div class="card">${vazio('Sem lançamentos em '+rot,'O ponto de equilíbrio usa as receitas e despesas lançadas por competência, como no DRE.')}</div>` : `
   <div class="tiles">
     <div class="tile"><small>Faturamento</small><b>${brl(R.rec)}</b><span>${rot}</span></div>
@@ -2362,6 +2368,7 @@ function vPE(){
     <div class="tile ${R.pe===null?'neg':R.rec>=R.pe?'pos':'warn'}"><small>Ponto de equilíbrio</small><b>${R.pe===null?'Não atingível':brl(R.pe)}</b><span>${R.pe===null?'margem de contribuição zero ou negativa':R.n>1?brl(R.pe/R.nMov)+' por mês (média de '+R.nMov+' mês/meses com movimento)':'faturamento mínimo para não ter prejuízo'}</span></div>
     <div class="tile ${R.ms===null?'':R.ms>=0?'pos':'neg'}"><small>Margem de segurança</small><b class="${R.ms<0?'neg-t':''}">${R.ms===null?'—':pct(R.ms)}</b><span>${R.ms===null?'':R.ms>=0?'quanto o faturamento pode cair sem prejuízo':'faltou faturar '+brl(R.pe-R.rec)}</span></div>
   </div>
+  ${mensal?peMensal(ano,m0,m1,R):`
   <div class="card" style="padding:0"><div class="tscroll"><table class="t"><thead><tr><th>Demonstração pela margem de contribuição · ${esc(rot)}</th><th class="r">Valor</th><th class="r">% do faturamento</th></tr></thead><tbody>
     <tr style="background:var(--surface-2)"><td class="cell-main">(+) Faturamento</td><td class="r"><b>${brl(R.rec)}</b></td><td class="r">100,0%</td></tr>
     <tr style="background:var(--surface-2)"><td class="cell-main">(−) Custos e despesas variáveis</td><td class="r"><b>${brl(R.cv)}</b></td><td class="r">${pct(R.rec?R.cv/R.rec:0)}</td></tr>
@@ -2371,7 +2378,7 @@ function vPE(){
     ${fks.map(lin).join('')}
     <tr style="background:var(--accent-soft)"><td class="cell-main">(=) Resultado operacional</td><td class="r"><b class="${R.res<0?'neg-t':''}">${brl(R.res)}</b></td><td class="r">${pct(R.rec?R.res/R.rec:0)}</td></tr>
   </tbody><tfoot><tr><td>Ponto de equilíbrio = custos fixos ÷ margem de contribuição % = ${brl(R.cf)} ÷ ${pct(R.mcp)}</td><td class="r">${R.pe===null?'—':brl(R.pe)}</td><td class="r">${R.pe===null||!R.rec?'':pct(R.pe/R.rec)}</td></tr></tfoot></table></div></div>
-  ${R.pe!==null&&R.rec?graficoPE(R):''}
+  ${R.pe!==null&&R.rec?graficoPE(R):''}`}
   ${R.fora?`<div class="card"><div class="card-h"><h2 style="font-size:17px">Fora do cálculo</h2><span class="hint">${brl(R.fora)} no período</span></div><p class="note">Contas classificadas como "fora do ponto de equilíbrio" (parcelamentos, distribuição de lucros, provisões). Para incluir alguma, mude a classificação dela no Plano de contas.</p>
     <div class="cell-sub" style="margin-top:6px">${R.foraContas.sort((a,b)=>b.v-a.v).map(x=>esc(x.nome)+': '+brl(x.v)).join(' · ')}</div></div>`:''}
   `}
@@ -2385,6 +2392,62 @@ CHG.peAno=el=>{ F.peAno=+el.value; render(); };
 ACT.peTrat=el=>{ S.plano.peTrat=Object.assign(tratPE(),{[el.dataset.k]:el.dataset.v}); salvarDoc('plano'); render(); };
 ACT.peDet=el=>{ const [m0,m1]=faixa(F.peP), R=calcPE(F.peAno,m0,m1), c=R.cl[el.dataset.k];
   abrirModal(CLASSES[el.dataset.k]+' · '+rotuloPer(F.peP,F.peAno), `<div class="tscroll"><table class="t"><thead><tr><th>Grupo › conta</th><th class="r">Valor</th><th class="r">%</th></tr></thead><tbody>${c.contas.sort((a,b)=>b.v-a.v).map(x=>`<tr><td>${esc(x.nome)}</td><td class="r">${brl(x.v)}</td><td class="r">${pct(c.tot?x.v/c.tot:0)}</td></tr>`).join('')}</tbody><tfoot><tr><td>Total</td><td class="r">${brl(c.tot)}</td><td class="r">100%</td></tr></tfoot></table></div>`,
+    `<span></span><div class="row"><button class="btn primary" data-m="fechar">Fechar</button></div>`, {}); };
+
+/* Ponto de equilíbrio mês a mês: mesma conta do consolidado, feita para cada mês do período */
+F.peVis='mensal';
+function peMensal(ano, m0, m1, R){
+  const MS=[]; for(let i=m0;i<=m1;i++) MS.push(i);
+  const M={}; MS.forEach(i=>M[i]=calcPE(ano,i,i));
+  const mov=i=>{ const x=M[i]; return !!(x.rec||x.cv||x.cf); };
+  const T=R.T, vks=Object.keys(CLASSES).filter(k=>T[k]==='V'), fks=Object.keys(CLASSES).filter(k=>T[k]==='F');
+  const nMed=R.nMov, cols=MS.map(i=>`<th><button type="button" class="tg-mes" data-act="peAbrirMes" data-m="${i}" title="Abrir ${MESES[i]} sozinho">${MES3[i]}</button></th>`).join('');
+  const v=(n,neg)=>`<td class="v${neg?' neg':''}">${n?fmoney(n):'–'}</td>`;
+  const dr=(n,k,m)=>n?`<td class="v dr" data-act="peDetM" data-k="${k}" data-m="${m}" title="Ver as contas">${fmoney(n)}</td>`:`<td class="v">–</td>`;
+  const linha=(cls,lbl,fm,tot,med)=>`<tr class="${cls}"><td>${lbl}</td>${MS.map(i=>mov(i)?fm(M[i],i):'<td class="v">–</td>').join('')}${tot}${med}</tr>`;
+  const sub=k=>R.cl[k].tot||MS.some(i=>M[i].cl[k].tot)? linha('acc',esc(CLASSES[k]),(x,i)=>dr(x.cl[k].tot,k,i),dr(R.cl[k].tot,k,'T'),v(R.cl[k].tot/nMed)) : '';
+  const peTxt=x=>x.pe===null?'<td class="v neg">não atinge</td>':v(x.pe);
+  const sit=x=>x.pe===null?'<td class="v neg">prejuízo</td>':x.rec>=x.pe?`<td class="v pos-t">+${fmoney(x.rec-x.pe)}</td>`:`<td class="v neg">−${fmoney(x.pe-x.rec)}</td>`;
+  const msP=x=>`<td class="p${x.ms!==null&&x.ms<0?' neg':''}">${x.ms===null?'—':pct(x.ms)}</td>`;
+  const acima=MS.filter(i=>mov(i)&&M[i].pe!==null&&M[i].rec>=M[i].pe).length, comMov=MS.filter(mov).length;
+  const linhas=[
+    linha('tot','(+) Faturamento',x=>v(x.rec),v(R.rec),v(R.rec/nMed)),
+    linha('tot','(−) Custos e despesas variáveis',x=>v(x.cv),v(R.cv),v(R.cv/nMed)), ...vks.map(sub),
+    linha('res','(=) Margem de contribuição',x=>v(x.mc,x.mc<0),v(R.mc,R.mc<0),v(R.mc/nMed,R.mc<0)),
+    linha('info','Margem de contribuição %',x=>`<td class="p">${pct(x.mcp)}</td>`,`<td class="p">${pct(R.mcp)}</td>`,'<td class="p"></td>'),
+    linha('tot','(−) Custos e despesas fixas',x=>v(x.cf),v(R.cf),v(R.cf/nMed)), ...fks.map(sub),
+    linha('res','(=) Resultado operacional',x=>v(x.res,x.res<0),v(R.res,R.res<0),v(R.res/nMed,R.res<0)),
+    linha('pe','Ponto de equilíbrio',peTxt,peTxt(R),R.pe===null?'<td class="v">–</td>':v(R.pe/nMed)),
+    linha('','Faturado acima (+) ou abaixo (−) do ponto',sit,sit(R),R.pe===null?'<td class="v">–</td>':sit({rec:R.rec/nMed,pe:R.pe/nMed})),
+    linha('info','Margem de segurança',msP,msP(R),'<td class="p"></td>')
+  ].join('');
+  return `<div class="card" style="padding:0"><div class="tscroll" style="max-height:72vh;overflow:auto"><table class="dre pem"><thead><tr><th>Ponto de equilíbrio mês a mês · ${esc(rotuloPer(F.peP,ano))}</th>${cols}<th>Total</th><th>Média/mês</th></tr></thead><tbody>${linhas}</tbody></table></div></div>
+  <p class="note">Cada mês tem o seu próprio ponto de equilíbrio: custos fixos do mês ÷ margem de contribuição % do mês. ${comMov?`Em <b>${acima} de ${comMov}</b> ${comMov===1?'mês':'meses'} com movimento o faturamento ficou acima do ponto.`:''} Toque no nome do mês para abrir só ele, ou num valor de despesa para ver as contas. A coluna Total usa a soma do período, e a Média/mês considera ${nMed} ${nMed===1?'mês':'meses'} com lançamentos.</p>
+  ${graficoPEM(MS,M,mov)}`;
+}
+/* Barras do faturamento de cada mês, com a marca do ponto de equilíbrio daquele mês */
+function graficoPEM(MS,M,mov){
+  const ms=MS.filter(mov); if(!ms.length) return '';
+  const W=760, H=280, pl=64, pr=16, pt=24, pb=34, max=Math.max(1,...ms.map(i=>Math.max(M[i].rec, M[i].pe||0)))*1.12;
+  const passo=m=>{ const r=m/5, q=Math.pow(10,Math.floor(Math.log10(r))), n=r/q; return (n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*q; };
+  const st=passo(max), gy=[]; for(let y=0;y<=max+1e-9;y+=st) gy.push(y);
+  const Y=y=>H-pb-(H-pt-pb)*y/max, bw=(W-pl-pr)/MS.length, larg=Math.min(46,bw*0.5);
+  const barras=MS.map((i,j)=>{ const x=M[i], cx=pl+bw*j+bw/2; if(!mov(i)) return `<text x="${cx}" y="${H-pb+18}" text-anchor="middle">${MES3[i]}</text>`;
+    const ok=x.pe!==null&&x.rec>=x.pe, cor=ok?'var(--pos)':'var(--neg)';
+    return `<rect x="${cx-larg/2}" y="${Y(x.rec)}" width="${larg}" height="${Math.max(0,Y(0)-Y(x.rec))}" rx="3" fill="${cor}" opacity=".85"><title>${MESES[i]}: faturado ${brl(x.rec)} · ponto ${x.pe===null?'não atingível':brl(x.pe)}</title></rect>
+      ${x.pe!==null&&x.pe<=max?`<line x1="${cx-larg/2-8}" x2="${cx+larg/2+8}" y1="${Y(x.pe)}" y2="${Y(x.pe)}" stroke="var(--ink)" stroke-width="2.5"/>`:''}
+      <text x="${cx}" y="${H-pb+18}" text-anchor="middle">${MES3[i]}</text>`; }).join('');
+  return `<div class="card"><div class="card-h"><h2 style="font-size:17px">Faturamento × ponto de equilíbrio, mês a mês</h2>
+    <div class="legend"><span><i style="background:var(--pos)"></i>Faturou acima do ponto</span><span><i style="background:var(--neg)"></i>Faturou abaixo do ponto</span><span><i style="background:var(--ink);height:3px"></i>Ponto de equilíbrio do mês</span></div></div>
+  <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Faturamento e ponto de equilíbrio por mês">
+    ${gy.map(y=>`<line class="grid" x1="${pl}" x2="${W-pr}" y1="${Y(y)}" y2="${Y(y)}"/><text x="${pl-8}" y="${Y(y)+4}" text-anchor="end">${abrev(y)}</text>`).join('')}
+    ${barras}
+  </svg></div>`;
+}
+ACT.peVis=el=>{ F.peVis=el.dataset.v; render(); };
+ACT.peAbrirMes=el=>{ F.peP.tipo='mes'; F.peP.mes=+el.dataset.m; render(); };
+ACT.peDetM=el=>{ const t=el.dataset.m==='T', [a,b]=faixa(F.peP), m0=t?a:+el.dataset.m, m1=t?b:+el.dataset.m, R=calcPE(F.peAno,m0,m1), c=R.cl[el.dataset.k];
+  abrirModal(CLASSES[el.dataset.k]+' · '+(t?rotuloPer(F.peP,F.peAno):MESES[m0]+'/'+F.peAno), `<div class="tscroll"><table class="t"><thead><tr><th>Grupo › conta</th><th class="r">Valor</th><th class="r">%</th></tr></thead><tbody>${c.contas.sort((x,y)=>y.v-x.v).map(x=>`<tr><td>${esc(x.nome)}</td><td class="r">${brl(x.v)}</td><td class="r">${pct(c.tot?x.v/c.tot:0)}</td></tr>`).join('')}</tbody><tfoot><tr><td>Total</td><td class="r">${brl(c.tot)}</td><td class="r">100%</td></tr></tfoot></table></div>`,
     `<span></span><div class="row"><button class="btn primary" data-m="fechar">Fechar</button></div>`, {}); };
 
 /* Gráfico clássico: receita × custo total, cruzando no ponto de equilíbrio */
@@ -2413,7 +2476,9 @@ function graficoPE(R){
 }
 
 /* Exportação do ponto de equilíbrio */
-REL_EXP.pe=()=>{ const ano=F.peAno, [m0,m1]=faixa(F.peP), R=calcPE(ano,m0,m1), T=R.T; const linhas=[]; if(!R.rec&&!R.cv&&!R.cf) return {titulo:'Ponto de equilíbrio', cols:[], linhas:[]};
+REL_EXP.pe=()=>{ const ano=F.peAno, [m0,m1]=faixa(F.peP), R=calcPE(ano,m0,m1), T=R.T; const linhas=[];
+  if(m1>m0 && F.peVis==='mensal' && (R.rec||R.cv||R.cf)) return expTela({sel:'table.pem', titulo:'Ponto de equilíbrio mês a mês', arquivo:'Ponto_de_equilibrio_mes_a_mes_'+rotuloPer(F.peP,ano).replace(/[º\/ ]+/g,'_'), paisagem:true,
+    filtros:['Período: '+rotuloPer(F.peP,ano),'Por competência (mesma base do DRE)','Ponto do mês = custos fixos do mês ÷ margem de contribuição % do mês']}); if(!R.rec&&!R.cv&&!R.cf) return {titulo:'Ponto de equilíbrio', cols:[], linhas:[]};
   const p=v=>R.rec?v/R.rec:0;
   const bloco=(rot,tot,ks)=>{ linhas.push({v:[rot,tot,p(tot)], estilo:'grupo'}); ks.forEach(k=>{ if(!R.cl[k].tot) return; linhas.push({v:[CLASSES[k],R.cl[k].tot,p(R.cl[k].tot)], nivel:1}); R.cl[k].contas.sort((a,b)=>b.v-a.v).forEach(x=>linhas.push({v:[x.nome,x.v,p(x.v)], estilo:'det', nivel:2})); }); };
   linhas.push({v:['(+) Faturamento',R.rec,1], estilo:'grupo'});
