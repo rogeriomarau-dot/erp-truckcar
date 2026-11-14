@@ -62,6 +62,12 @@ button,input,select,textarea{font:inherit;color:inherit}
 .nav button[aria-current="page"]{background:var(--side-act);color:var(--side-hi);box-shadow:inset 3px 0 0 var(--accent)}
 .nav button:focus-visible{outline:2px solid var(--accent)}
 .main{min-width:0;display:flex;flex-direction:column}
+.teto-btn{display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px;padding:5px 12px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);cursor:pointer;font:inherit;line-height:1.15;min-width:220px;margin-right:auto;margin-left:6px}
+.topbar #title{flex:0 1 auto}
+.teto-btn small{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.teto-btn b{font-family:var(--f-num);font-size:13.5px;font-weight:600}.teto-btn .tb-bar{display:block;width:100%;height:4px;border-radius:3px;background:var(--line);overflow:hidden}.teto-btn .tb-bar i{display:block;height:100%;background:var(--pos)}
+.teto-btn.warn{border-color:#e0a41c;background:#fff8e1}.teto-btn.warn .tb-bar i{background:#e0a41c}.teto-btn.neg{border-color:var(--neg);background:var(--neg-soft)}.teto-btn.neg .tb-bar i{background:var(--neg)}.teto-btn.neg b{color:var(--neg)}
+@media (max-width:760px){.teto-btn{min-width:0}.teto-btn small{display:none}}
 .topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .topbar h1{font-size:24px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .iconbtn{min-height:42px;min-width:42px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--muted);font-weight:600;cursor:pointer}
@@ -325,6 +331,7 @@ table.t tfoot td{font-weight:600;border-top:2px solid var(--line)}
 .pill.aberto{background:var(--accent-soft);color:var(--accent);border-color:transparent}
 .pill.vencido{background:var(--neg-soft);color:var(--neg);border-color:transparent}
 .btn.amber{background:#f5b82e;border-color:#e0a41c;color:#1f2430;font-weight:600}.btn.amber:hover{background:#eaa917;border-color:#d39613}
+.teto-ck{width:18px;height:18px;min-height:0;accent-color:#e0a41c;cursor:pointer}.teto-lbl{background:#fff8e1;border:1px solid #f1d27a;border-radius:10px;padding:8px 12px}
 .selcell{width:34px;text-align:center;cursor:default} .selcell input,.bb-t input[type=checkbox]{width:18px;height:18px;min-height:0;accent-color:var(--accent);cursor:pointer}
 tr.sel td{background:var(--accent-soft)}
 .selbar{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;margin:0 0 10px;border-radius:12px;background:var(--ink);color:var(--surface)}
@@ -492,6 +499,7 @@ table.dre td.dr:focus-visible{outline:2px solid var(--accent)}
     <header class="topbar">
       <button class="iconbtn menu-btn" type="button" id="btnMenu" aria-label="Abrir menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
       <h1 id="title">Dashboard</h1>
+      <button type="button" class="teto-btn" id="btnTeto" hidden aria-label="Teto de gastos variáveis do mês"></button>
       <span class="ro-tag" title="Seu usuário só pode consultar este módulo">Somente consulta</span>
       <span class="sync" id="syncState">Salvo neste aparelho</span>
       <span class="usr" id="usrBox" hidden><span id="usrName"></span><button type="button" id="btnSair" title="Sair do sistema">Sair</button></span>
@@ -1133,6 +1141,8 @@ function formLanc(t,l){
     <div class="f s2"><label for="mForma">Forma de ${P?'pagamento':'recebimento'}</label><select id="mForma">${formaOptions(x.forma,t)}</select></div>
     ${P?`<div class="f ${novo?'s2':'s4'}" id="mBoletoBox"><label for="mBoleto">Linha digitável do boleto</label><input id="mBoleto" value="${esc(x.boleto||'')}" inputmode="numeric"></div>`:`<div class="f ${novo?'s2':'s4'}"></div>`}
     <div class="f s6"><label for="mObs">Observações</label><textarea id="mObs">${esc(x.obs||'')}</textarea></div>
+    ${P? (x.notaId? `<p class="note" style="grid-column:span 6;margin:0">Teto de gastos: esta conta veio de uma nota com itens. Marque os itens do teto em <b>Ver itens da nota</b>.</p>`
+      : `<label class="check teto-lbl" style="grid-column:span 6"><input type="checkbox" id="mTeto"${x.teto?' checked':''}> <span><b>Faz parte do teto de gastos variáveis</b> (teto de ${brl(tetoValor())}/mês)${novo?' · com itens, marca todos os itens da compra':''}</span></label>`) :''}
     ${novo?`<div class="f s6"><label class="check" for="mPago"><input type="checkbox" id="mPago"> Já foi ${P?'pago':'recebido'} (baixar agora)</label></div>
     <div class="fields s6" id="mPagoBox" hidden style="grid-column:span 6">
       <div class="f s2"><label for="mPData">Data do ${P?'pagamento':'recebimento'}</label><input id="mPData" type="date" value="${hoje()}"></div>
@@ -1194,7 +1204,7 @@ function formLanc(t,l){
     if(novo){
       const n=+mv('mParc')||1, gid=n>1?uid():'';
       if(n>1){ if(parc.length!==n) gerarParc(); if(parc.some(r=>!r.venc)){ toast('Preencha o vencimento de todas as parcelas.'); return; } if(parc.some(r=>!(r.valor>0))){ toast('Todas as parcelas precisam ter valor.'); return; } if(Math.abs(parc.reduce((a,r)=>a+r.valor,0)-d.valor)>0.004){ toast('A soma das parcelas precisa ser igual ao valor total.'); return; } }
-      const pago=$('#sheet').querySelector('#mPago')&&$('#sheet').querySelector('#mPago').checked;
+      const pago=$('#sheet').querySelector('#mPago')&&$('#sheet').querySelector('#mPago').checked, tetoCk=!!($('#sheet').querySelector('#mTeto')&&$('#sheet').querySelector('#mTeto').checked);
       let notaId='', partes0=null; const lancIds=[];
       if(its.length){ notaId=uid(); const somaIns={};
         its.forEach(i=>{ let ins=i.insumoId&&S.insumos.find(z=>z.id===i.insumoId);
@@ -1209,18 +1219,19 @@ function formLanc(t,l){
         const r=touch({id:uid(), tipo:t, pessoaId:p.id, pessoaNome:p.nome, descricao:d.descricao, documento:d.documento, contaId:d.contaId,
           rateio:partes0&&partes0.length>1?arredondaPartes(partes0.map(q=>({contaId:q.contaId, valor:q.valor*v/d.valor})), v):null, notaId,
           competencia:d.competencia, vencimento:n>1?parc[i].venc:d.vencimento, valor:v, forma:d.forma, boleto:n>1?parc[i].boleto:d.boleto, obs:d.obs,
-          parcela:n>1?(i+1)+'/'+n:'', grupoParcelas:gid, status:'aberto'});
+          parcela:n>1?(i+1)+'/'+n:'', grupoParcelas:gid, status:'aberto'}); if(tetoCk && !its.length) r.teto=true;
         if(pago && i===0){ r.status='pago'; r.pagamento={data:mv('mPData')||hoje(), valor:v, juros:0, desconto:0, bancoId:mv('mPBanco'), forma:d.forma}; }
         S.lancamentos.push(r); lancIds.push(r.id);
       }
       if(notaId){ S.notas.push(touch({id:notaId, fornecedorId:p.id, fornecedorNome:p.nome, numero:d.documento.replace(/^\s*(nf|nota)\s*/i,'')||'', serie:'', emissao:d.competencia, chave:'', total:d.valor, forma:d.forma, manual:true,
-          itens:its.map(i=>({codigo:'', descricao:String(i.descricao).trim(), ncm:'', un:i.un, qtd:i.qtd, vUnit:i.vUnit, vTotal:i.vTotal, contaId:i.cat, insumoId:i.insumoId})),
+          itens:its.map(i=>({codigo:'', descricao:String(i.descricao).trim(), ncm:'', un:i.un, qtd:i.qtd, vUnit:i.vUnit, vTotal:i.vTotal, contaId:i.cat, insumoId:i.insumoId, teto:tetoCk})),
           duplicatas:lancIds.map(id=>{ const l=S.lancamentos.find(z=>z.id===id); return {numero:l.parcela||'', venc:l.vencimento, valor:l.valor}; }), lancIds}));
         salvarCol('insumos'); salvarCol('notas'); }
       salvarCol('lancamentos'); fecharModal(); toast(n>1?`${n} parcelas lançadas`:'Lançamento salvo'+(its.length?` com ${its.length} item(ns)`:''));
     } else {
       if(l.rateio && l.rateio.length){ if(Math.abs(d.valor-l.valor)>0.004){ const k=d.valor/l.valor; l.rateio=arredondaPartes(l.rateio.map(x=>({contaId:x.contaId, valor:x.valor*k})), d.valor); } d.contaId=l.contaId; }
       Object.assign(l,{pessoaId:p.id, pessoaNome:p.nome, descricao:d.descricao, documento:d.documento, contaId:d.contaId, competencia:d.competencia, vencimento:d.vencimento, valor:d.valor, forma:d.forma, boleto:d.boleto, obs:d.obs});
+      { const tk=$('#sheet').querySelector('#mTeto'); if(tk){ if(tk.checked) l.teto=true; else delete l.teto; } }
       touch(l); salvarCol('lancamentos');
       if(depois==='baixar'){ formBaixa(l); } else { fecharModal(); toast('Alterações salvas'); }
     }
@@ -1999,7 +2010,7 @@ function formNota(ND){
     <div><div class="card-h" style="margin:6px 0"><h2 style="font-size:18px">Itens</h2><button class="btn sm primary" data-m="addItem">+ Item</button></div>
     <p class="note" style="margin:0 0 8px">"1 un contém": quanto de kg, litro ou metro vem em cada unidade comprada (ex.: galão de 3,6 L, lata de 900 ml = 0,9 L). O ERP preenche pela unidade da nota, pelo cadastro do insumo ou pela descrição; confira e corrija se precisar. Item já cadastrado: comece a digitar a descrição e escolha na lista.</p>
     <datalist id="nfInsList">${[...new Set(S.insumos.map(i=>i.descricao))].map(d=>`<option value="${esc(d)}">`).join('')}</datalist>
-    <div class="tscroll"><table class="t"><thead><tr><th>Descrição</th><th class="r">Qtd</th><th>Un</th><th>1 un contém</th><th class="r">Unitário</th><th class="r">Total</th><th class="r">Preço kg / L</th><th>Categoria</th><th></th></tr></thead><tbody>
+    <div class="tscroll"><table class="t"><thead><tr><th>Descrição</th><th class="r">Qtd</th><th>Un</th><th>1 un contém</th><th class="r">Unitário</th><th class="r">Total</th><th class="r">Preço kg / L</th><th>Categoria</th><th title="Faz parte do teto de gastos">Teto</th><th></th></tr></thead><tbody>
     ${ND.itens.map((it,i)=>`<tr><td style="min-width:220px"><input value="${esc(it.descricao)}" data-ni="${i}" data-k="descricao" list="nfInsList" autocomplete="off" aria-label="Descrição item ${i+1}">${it.codigo?`<div class="cell-sub">cód. ${esc(it.codigo)}${it.ncm?' · NCM '+esc(it.ncm):''}</div>`:''}</td>
       <td style="min-width:72px"><input class="n" value="${fnum(it.qtd)}" data-ni="${i}" data-k="qtd" inputmode="decimal" aria-label="Quantidade"></td>
       <td style="min-width:64px"><input value="${esc(it.un)}" data-ni="${i}" data-k="un" aria-label="Unidade"></td>
@@ -2008,6 +2019,7 @@ function formNota(ND){
       <td class="r" data-tot="${i}">${brl(it.vTotal)}</td>
       <td class="r" data-pb="${i}">${pbTxt(it)}</td>
       <td style="min-width:230px"><select data-ni="${i}" data-k="cat" aria-label="Categoria">${catOptions(it.cat, novasRefs())}</select></td>
+      <td style="text-align:center"><input type="checkbox" class="teto-ck" data-ni="${i}" data-k="teto" aria-label="Item do teto de gastos"${it.teto?' checked':''}></td>
       <td><button class="x" data-m="delItem" data-i="${i}" aria-label="Remover item">×</button></td></tr>`).join('')}
     </tbody></table></div></div>
     <div><div class="card-h" style="margin:6px 0"><h2 style="font-size:18px">Duplicatas (vencimentos)</h2><button class="btn sm primary" data-m="addDup">+ Duplicata</button></div>
@@ -2019,7 +2031,7 @@ function formNota(ND){
   const setP=(o,p,v)=>{ const ks=p.split('.'); let a=o; ks.slice(0,-1).forEach(k=>{ a[k]=a[k]||{}; a=a[k]; }); a[ks[ks.length-1]]=v; };
   const ler=el=>{
     if(el.dataset.nd){ setP(ND, el.dataset.nd, el.type==='checkbox'?el.checked : el.dataset.num?parseNum(el.value):el.value); }
-    else if(el.dataset.ni!==undefined){ const it=ND.itens[+el.dataset.ni], k=el.dataset.k; it[k]=(k==='qtd'||k==='vUnit'||k==='conteudo')?parseNum(el.value):el.value; if(k==='conteudo'||k==='base') it.medAuto=false;
+    else if(el.dataset.ni!==undefined){ const it=ND.itens[+el.dataset.ni], k=el.dataset.k; it[k]=k==='teto'?el.checked:(k==='qtd'||k==='vUnit'||k==='conteudo')?parseNum(el.value):el.value; if(k==='conteudo'||k==='base') it.medAuto=false;
       if(k==='qtd'||k==='vUnit'){ it.vTotal=Math.round(it.qtd*it.vUnit*100)/100; const c=$('#sheet').querySelector(`[data-tot="${el.dataset.ni}"]`); if(c) c.textContent=brl(it.vTotal); }
       const pb=$('#sheet').querySelector(`[data-pb="${el.dataset.ni}"]`); if(pb) pb.innerHTML=pbTxt(it); }
     else if(el.dataset.nd2!==undefined){ const d=ND.duplicatas[+el.dataset.nd2]; d[el.dataset.k]=el.dataset.k==='valor'?parseNum(el.value):el.value; }
@@ -2070,7 +2082,7 @@ function salvarNota(ND){
     if(!ND.duplicatas.length && ND.pago){ l.status='pago'; l.pagamento={data:ND.emissao, valor:d.valor, juros:0, desconto:0, bancoId:S.bancos.itens[0]?S.bancos.itens[0].id:'', forma:ND.forma}; }
     S.lancamentos.push(l); lancIds.push(l.id); });
   S.notas.push(touch({id:notaId, fornecedorId:f.id, fornecedorNome:f.nome, numero:String(ND.numero).trim(), serie:ND.serie||'', emissao:ND.emissao, chave:ND.chave||'', total, forma:ND.forma,
-    itens:itens.map(i=>({codigo:i.codigo||'', descricao:String(i.descricao).trim(), ncm:i.ncm||'', un:i.un, qtd:i.qtd, vUnit:i.vUnit, vTotal:i.vTotal, contaId:i.cat, insumoId:i.insumoId, conteudo:+i.conteudo||0, base:i.conteudo>0?i.base:''})),
+    itens:itens.map(i=>({codigo:i.codigo||'', descricao:String(i.descricao).trim(), ncm:i.ncm||'', un:i.un, qtd:i.qtd, vUnit:i.vUnit, vTotal:i.vTotal, contaId:i.cat, insumoId:i.insumoId, conteudo:+i.conteudo||0, base:i.conteudo>0?i.base:'', teto:!!i.teto})),
     duplicatas:dups.map(d=>({numero:d.numero, venc:d.venc, valor:d.valor})), lancIds}));
   ['fornecedores','insumos','lancamentos','notas'].forEach(salvarCol);
   fecharModal(); toast(`Nota ${ND.numero} salva: ${itens.length} itens e ${dups.length} conta(s) a pagar`);
@@ -2079,12 +2091,14 @@ ACT.verNota=el=>{ const n=S.notas.find(x=>x.id===el.dataset.id); if(!n) return;
   const ls=(n.lancIds||[]).map(id=>S.lancamentos.find(l=>l.id===id)).filter(Boolean); const pagos=ls.some(l=>l.status==='pago');
   let conf=false;
   abrirModal(`${n.numero?'NF '+n.numero:'Compra'} · ${n.fornecedorNome}`, `<p class="note">Emissão ${dataBR(n.emissao)} · total ${brl(n.total)}${n.chave?'<br>Chave '+esc(n.chave):''}</p>
-    <div class="tscroll"><table class="t"><thead><tr><th>Item</th><th class="r">Qtd</th><th class="r">Unitário</th><th class="r">Total</th><th>Categoria</th></tr></thead><tbody>
-    ${n.itens.map(i=>`<tr><td>${esc(i.descricao)}</td><td class="r">${fnum(i.qtd)} ${esc(i.un)}</td><td class="r">${brl(i.vUnit)}</td><td class="r">${brl(i.vTotal)}</td><td class="cell-sub">${esc(nomeConta(i.contaId))}</td></tr>`).join('')}</tbody></table></div>
+    <div class="tscroll"><table class="t"><thead><tr><th>Item</th><th class="r">Qtd</th><th class="r">Unitário</th><th class="r">Total</th><th>Categoria</th><th title="Faz parte do teto de gastos">Teto</th></tr></thead><tbody>
+    ${n.itens.map((i,k)=>`<tr><td>${esc(i.descricao)}</td><td class="r">${fnum(i.qtd)} ${esc(i.un)}</td><td class="r">${brl(i.vUnit)}</td><td class="r">${brl(i.vTotal)}</td><td class="cell-sub">${esc(nomeConta(i.contaId))}</td><td style="text-align:center"><input type="checkbox" class="teto-ck" data-teto="${k}" aria-label="Item do teto de gastos"${i.teto?' checked':''}${nivel('pagar')==='editar'?'':' disabled'}></td></tr>`).join('')}</tbody></table></div>
+    <p class="note" style="margin:4px 0 8px">Marque em <b>Teto</b> os itens que entram no teto de gastos variáveis do mês. Já salva ao marcar.</p>
     <div class="tscroll"><table class="t"><thead><tr><th>Duplicata</th><th>Vencimento</th><th class="r">Valor</th><th>Situação</th></tr></thead><tbody>
     ${ls.map(l=>`<tr><td>${esc(l.documento)}</td><td class="num">${dataBR(l.vencimento)}</td><td class="r">${brl(l.valor)}</td><td><span class="pill ${stL(l)}">${ST_NOME.P[stL(l)]}</span></td></tr>`).join('') || '<tr><td colspan="4" class="cell-sub">As contas a pagar desta nota foram excluídas.</td></tr>'}</tbody></table></div>`,
   `<div class="row"><button class="btn danger" data-m="del">Excluir nota</button></div><div class="row"><button class="btn primary" data-m="fechar">Fechar</button></div>`,
-  { pagar:()=>{ Object.assign(F.P,{periodo:'todos',status:'todos',q:'NF '+n.numero,contas:[]}); $('#modal').hidden=true; go('pagar'); },
+  { change:el=>{ if(el.dataset.teto===undefined) return; const it=n.itens[+el.dataset.teto]; if(!it) return; it.teto=el.checked; touch(n); salvarCol('notas'); atualizarTeto(); toast(el.checked?'Item incluído no teto de gastos':'Item retirado do teto de gastos'); },
+    pagar:()=>{ Object.assign(F.P,{periodo:'todos',status:'todos',q:'NF '+n.numero,contas:[]}); $('#modal').hidden=true; go('pagar'); },
     del:b=>{ if(pagos){ toast('Esta nota tem duplicata paga. Estorne o pagamento antes de excluir.'); return; }
       if(!conf){ conf=true; b.textContent='Confirmar exclusão'; toast('A nota e as contas a pagar dela serão apagadas. Toque de novo para confirmar.'); return; }
       S.lancamentos=S.lancamentos.filter(l=>l.notaId!==n.id); S.notas=S.notas.filter(x=>x.id!==n.id); salvarCol('lancamentos'); salvarCol('notas'); fecharModal(); toast('Nota excluída'); } });
@@ -3910,6 +3924,38 @@ $('#btnSair').addEventListener('click',()=>sairSistema(''));
 if(migrarPlano()) LS.set('plano',S.plano);
 marca();
 if(window.FB) bootFirebase(window.FB); else { window.addEventListener('fb-pronto',()=>bootFirebase(window.FB),{once:true}); window.addEventListener('fb-erro',()=>{ $('#lockBtn').textContent='Sem conexão'; msgLock('Não consegui conectar ao servidor. Confira a internet e recarregue a página.'); },{once:true}); }
+
+/* ======================= TETO DE GASTOS VARIÁVEIS (mensal, por competência) ======================= */
+const TETO_DEF=12000;
+const tetoValor=()=>{ const v=(S.cfg.teto||{}).valor; return v===undefined||v===null||v===''?TETO_DEF:+v||0; };
+F.tetoMes=hoje().slice(0,7);
+function tetoItens(ym){ const out=[];
+  (S.notas||[]).forEach(n=>{ if(!String(n.emissao||'').startsWith(ym)) return; const vivos=(n.lancIds||[]).map(id=>S.lancamentos.find(l=>l.id===id)).filter(l=>l&&l.status!=='cancelado'); if(!vivos.length) return;
+    (n.itens||[]).forEach((it,i)=>{ if(it.teto) out.push({data:n.emissao, forn:n.fornecedorNome||'', desc:it.descricao, doc:n.numero?'NF '+n.numero:'', valor:+it.vTotal||0, notaId:n.id, i}); }); });
+  S.lancamentos.forEach(l=>{ if(l.tipo!=='P'||l.notaId||!l.teto||l.status==='cancelado'||!String(l.competencia||'').startsWith(ym)) return;
+    out.push({data:l.competencia, forn:nomePessoa(l)||'', desc:l.descricao||nomeContaL(l), doc:l.documento||'', valor:+l.valor||0, lancId:l.id}); });
+  return out.sort((a,b)=>a.data.localeCompare(b.data)); }
+function tetoResumo(ym){ const its=tetoItens(ym), usado=Math.round(its.reduce((a,x)=>a+x.valor,0)*100)/100, teto=tetoValor(); return {its, usado, teto, saldo:Math.round((teto-usado)*100)/100, p:teto>0?usado/teto:0}; }
+function atualizarTeto(){ const b=$('#btnTeto'); if(!b) return; if(!USR || !algum(['pagar','rel_pagar','painel'])){ b.hidden=true; return; }
+  const R=tetoResumo(hoje().slice(0,7)); b.hidden=false; b.className='teto-btn'+(R.p>=1?' neg':R.p>=0.8?' warn':'');
+  b.innerHTML=`<small>Teto de gastos · ${MES3[+hoje().slice(5,7)-1]} · ${brl(R.teto)}</small><b>Usado ${brl(R.usado)} · ${R.saldo>=0?'Saldo '+brl(R.saldo):'Estourou '+brl(-R.saldo)}</b><span class="tb-bar"><i style="width:${Math.min(100,R.p*100).toFixed(1)}%"></i></span>`;
+  b.title=`Teto ${brl(R.teto)} · usado ${brl(R.usado)} (${pct(R.p)}) · saldo ${brl(R.saldo)}`; }
+function tetoModal(){ const ym=F.tetoMes, R=tetoResumo(ym), [y,m]=ym.split('-').map(Number), pode=nivel('pagar')==='editar';
+  const corpo=`<div class="fields"><div class="f s2"><label for="tMes">Mês (competência)</label><input id="tMes" type="month" value="${ym}"></div>
+      <div class="f s2"><label for="tVal">Teto mensal (R$)</label><input id="tVal" class="n" inputmode="decimal" value="${fmoney(R.teto)}"${pode?'':' disabled'}></div></div>
+    <div class="tiles" style="margin-top:10px"><div class="tile"><small>Teto</small><b>${brl(R.teto)}</b></div><div class="tile ${R.p>=1?'neg':R.p>=0.8?'warn':''}"><small>Usado</small><b>${brl(R.usado)}</b><span>${pct(R.p)} do teto</span></div>
+      <div class="tile ${R.saldo<0?'neg':'pos'}"><small>${R.saldo<0?'Estourou':'Saldo para usar'}</small><b class="${R.saldo<0?'neg-t':''}">${brl(Math.abs(R.saldo))}</b></div></div>
+    ${R.its.length?`<div class="tscroll" style="max-height:44vh;overflow:auto"><table class="t"><thead><tr><th>Data</th><th>Fornecedor</th><th>Item / descrição</th><th>Documento</th><th class="r">Valor</th></tr></thead><tbody>
+      ${R.its.map(x=>`<tr><td class="num">${dataBR(x.data)}</td><td>${esc(x.forn||'—')}</td><td>${esc(x.desc||'')}</td><td class="cell-sub">${esc(x.doc||'')}</td><td class="r">${brl(x.valor)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td colspan="4">${R.its.length} item(ns)</td><td class="r">${brl(R.usado)}</td></tr></tfoot></table></div>`:`<p class="note">Nenhum item marcado no teto em ${MESES[m-1]}/${y}.</p>`}
+    <p class="note" style="margin:8px 0 0">Entram no teto os itens marcados como <b>"Teto"</b> ao lançar a compra: na importação do XML, em <b>Ver itens da nota</b> ou, em conta a pagar sem itens, na caixa "Faz parte do teto de gastos". Conta pelo mês de competência (data da nota) e recomeça todo mês.</p>`;
+  abrirModal('Teto de gastos variáveis', corpo, `<span></span><div class="row">${pode?'<button class="btn" data-m="salvar">Salvar teto</button>':''}<button class="btn primary" data-m="fechar">Fechar</button></div>`, {
+    change:el=>{ if(el.id==='tMes'&&el.value){ F.tetoMes=el.value; fecharModal(); tetoModal(); } },
+    salvar:()=>{ const v=parseNum(mv('tVal')); if(!(v>=0)){ toast('Informe o valor do teto.'); return; } S.cfg.teto=Object.assign({},S.cfg.teto||{},{valor:v}); salvarDoc('geral'); toast('Teto mensal: '+brl(v)); fecharModal(); tetoModal(); } }, false);
+  $('#sheet').classList.add('lg'); }
+$('#btnTeto').addEventListener('click',()=>{ F.tetoMes=hoje().slice(0,7); tetoModal(); });
+{ const _rT=render; render=function(){ _rT(); atualizarTeto(); }; }
+
 window.ERPTruckcar={S, dreLinhas, SECOES, go, get usr(){ return USR; }};
 })();
 </script>
