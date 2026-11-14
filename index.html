@@ -2955,13 +2955,27 @@ const r2=n=>Math.round((+n||0)*100)/100;
    % despesas variáveis = impostos + financeiras (cartão, antecipação) + despesas variáveis (motoboy, comissão) ÷ receita. Insumos não entram: vão em R$ no orçamento. */
 let _oq2Ref=null, _oq2RefV=-1;
 function oq2Ref(){ const chave=S.lancamentos.length+'|'+idxV+'|'+JSON.stringify(S.cfg.custeio||{}); if(_oq2Ref && _oq2RefV===chave) return _oq2Ref;
-  const T=tratPE(), F0=fixosRef(); let fixo=0, pes=0, dv=0, rec=0; const n=F0.meses.length;
-  F0.meses.forEach(({y,m})=>{ const V=valoresPorConta(y,'comp');
-    ORDEM.filter(sc=>SECOES[sc].nat==='P').forEach(sc=>gruposDe(sc).forEach(g=>g.contas.forEach(c=>{ const v=(V[c.id]||[])[m]||0; if(!v) return; const k=classeDe(c,g); if(!k) return;
-      if(T[k]==='F'){ if(k==='cmo'||/PESSOAL/.test(norm(g.nome))) pes+=v; else fixo+=v; }
-      else if(k!=='custovar') dv+=v; })));
+  const T=tratPE(), F0=fixosRef(); let fixo=0, pes=0, dv=0, rec=0; const n=F0.meses.length, det={}, meses=F0.meses.slice().sort((a,b)=>a.y-b.y||a.m-b.m);
+  const put=(tipo,g,c,mi,v)=>{ const o=det[c.id]=det[c.id]||{tipo, nome:g.nome+' › '+c.nome, v:Array(meses.length).fill(0)}; o.v[mi]+=v; };
+  meses.forEach(({y,m},mi)=>{ const V=valoresPorConta(y,'comp');
+    ORDEM.filter(sc=>SECOES[sc].nat==='P' && sc!=='distrib' && sc!=='prov').forEach(sc=>gruposDe(sc).forEach(g=>g.contas.forEach(c=>{ const v=(V[c.id]||[])[m]||0; if(!v) return; const k=classeDe(c,g); if(!k) return;
+      if(T[k]==='F'){ if(k==='cmo'||/PESSOAL/.test(norm(g.nome))){ pes+=v; put('pes',g,c,mi,v); } else { fixo+=v; put('fixo',g,c,mi,v); } }
+      else if(k!=='custovar'){ dv+=v; put('var',g,c,mi,v); } })));
     gruposDe('receita').forEach(g=>g.contas.forEach(c=>rec+=(V[c.id]||[])[m]||0)); });
-  _oq2Ref={n, rotulo:F0.rotulo, fixoMes:n?fixo/n:0, pesMes:n?pes/n:0, varP:rec>0?dv/rec:0}; _oq2RefV=chave; return _oq2Ref; }
+  _oq2Ref={n, rotulo:F0.rotulo, meses, det:Object.values(det), rec, fixoMes:n?fixo/n:0, pesMes:n?pes/n:0, varP:rec>0?dv/rec:0}; _oq2RefV=chave; return _oq2Ref; }
+/* Composição dos valores automáticos do orçamento do Dionatan, conta por conta */
+ACT.oq2Comp=el=>{ const R=oq2Ref(), tipo=el.dataset.t, ms=R.meses, n=ms.length||1;
+  const tab=(t,titulo)=>{ const ls=R.det.filter(o=>o.tipo===t).sort((a,b)=>b.v.reduce((x,y)=>x+y,0)-a.v.reduce((x,y)=>x+y,0)); if(!ls.length) return '';
+    const tot=ms.map((_,i)=>ls.reduce((a,o)=>a+o.v[i],0)), st=tot.reduce((a,b)=>a+b,0);
+    return `<h3 style="margin:12px 0 6px;font-size:14px">${titulo}</h3><div class="tscroll"><table class="t"><thead><tr><th>Grupo › conta</th>${ms.map(x=>`<th class="r">${MES3[x.m]}/${String(x.y).slice(2)}</th>`).join('')}<th class="r">Média/mês</th></tr></thead><tbody>
+      ${ls.map(o=>`<tr><td>${esc(o.nome)}</td>${o.v.map(v=>`<td class="r">${v?fmoney(v):'–'}</td>`).join('')}<td class="r">${fmoney(o.v.reduce((a,b)=>a+b,0)/n)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td>Total</td>${tot.map(v=>`<td class="r">${fmoney(v)}</td>`).join('')}<td class="r"><b>${fmoney(st/n)}</b></td></tr></tfoot></table></div>`; };
+  const corpo= tipo==='var'
+    ? `<p class="note" style="margin:0">Despesas variáveis de ${esc(R.rotulo)} (regime de competência) ÷ receita do período (${brl(R.rec)}) = <b>${pct(R.varP)}</b>. Entram as contas classificadas como Impostos, Despesas financeiras e Despesa variável. Custos variáveis (insumos e peças) não entram.</p>${tab('var','Despesas variáveis')}`
+    : `<p class="note" style="margin:0">Regime de <b>competência</b>, meses de ${esc(R.rotulo)} (os mesmos do Custeio por setor). Entram as contas classificadas como fixas no Plano de contas, sem as seções Distribuição de resultados e Provisões. O grupo Despesas com pessoal e a CMO ficam de fora porque já estão no custo hora da equipe.</p>
+       <p class="note" style="margin:6px 0 0">Para conferir no relatório <b>Despesas fixas × variáveis</b>: regime Competência, período ${esc(R.rotulo)}, total de Despesas fixas − Despesas com pessoal, ÷ ${n} ${n===1?'mês':'meses'}.</p>
+       ${tab('fixo','Despesas fixas consideradas (média '+brl(R.fixoMes)+'/mês)')}${tab('pes','Fora do cálculo: pessoal (já está no custo hora) · média '+brl(R.pesMes)+'/mês')}`;
+  abrirModal(tipo==='var'?'Composição do % de despesas variáveis':'Composição das despesas fixas por hora', corpo, `<span></span><div class="row"><button class="btn primary" data-m="fechar">Fechar</button></div>`, {}); $('#sheet').classList.add('wide'); };
 function oq2Calc(o){ const s=o.serv||{}, R=oq2Ref();
   const eq=1, pe=1, prop=1, hs=+s.horas||0;
   const horaServ=r2((+s.hora||0)*prop), mo=r2(horaServ*hs), ins=r2((s.insumos||[]).reduce((a,i)=>a+(+i.valor||0),0)), direto=r2(mo+ins);
@@ -2992,13 +3006,13 @@ function vOrcV2(O, trav){
     <div class="oq2-blk"><div class="oq2-bt">Despesas fixas da estrutura</div>
       <div class="oq2-g"><div class="f"><label for="oq2fh">Custo fixo por hora da oficina (R$)</label>${num('fixoH',s.fixoH!=null&&s.fixoH!==''?fmoneyIn(s.fixoH):'','id="oq2fh" placeholder="automático"')}</div>
         <div class="f"><label for="oq2hm">Horas da oficina no mês</label>${num('horasMes',fnum(s.horasMes||180,0),'id="oq2hm"')}</div></div>
-      <span class="hint" id="oq2_fixoTxt"></span>
+      <span class="hint"><span id="oq2_fixoTxt"></span> <button type="button" class="linkbtn" data-act="oq2Comp" data-t="fixo">ver conta por conta</button></span>
       <div class="oq-tot"><span id="oq2_fixoLbl">Despesas fixas deste serviço</span><b id="oq2_fixo">—</b></div></div>
     <div class="oq-sub"><span>= Custo total</span><b id="oq2_custo">—</b></div>
     <div class="oq2-blk"><div class="oq2-bt">Formação do preço</div>
       <div class="oq2-g"><div class="f"><label for="oq2v">Despesas variáveis (% da venda)</label>${num('varP',s.varP!=null&&s.varP!==''?fnum(s.varP,1):'','id="oq2v" placeholder="automático"')}</div>
         <div class="f"><label for="oq2l">Lucro desejado (% da venda)</label>${num('lucro',fnum(s.lucro,1),'id="oq2l"')}</div></div>
-      <span class="hint" id="oq2_varTxt"></span></div>
+      <span class="hint"><span id="oq2_varTxt"></span> <button type="button" class="linkbtn" data-act="oq2Comp" data-t="var">ver conta por conta</button></span></div>
     <div class="oq-preco"><small>Preço do serviço</small><b id="oq2_preco">—</b></div>
     <div class="oq2-dem" id="oq2_dem"></div>
     ${trav?'':`<button type="button" class="linkbtn" data-act="oq2Padrao" style="align-self:flex-start">Salvar custo hora, horas do mês e lucro como padrão dos próximos orçamentos</button>`}
