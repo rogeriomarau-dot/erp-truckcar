@@ -231,6 +231,7 @@ input.n{text-align:right}
 .oq-preco small{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:600}
 .oq-preco b{font-size:24px;color:var(--accent)}
 .oq2-g{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.oq2-opc{padding:8px 10px;border-radius:10px;border:1px dashed var(--line);opacity:.55}.oq2-opc.on{opacity:1;border:1.5px solid var(--accent);background:var(--accent-soft)}
 .oq2-g3{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:8px;align-items:end}.oq2-g3 label{font-size:11.5px}
 .oq2-blk{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:10px}
 .oq2-bt{font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--accent)}
@@ -2960,13 +2961,13 @@ function orcNovoObjAntigo(){ const P=orcPadrao(); return {numero:orcNumProx(), d
    Serviço: custo = custo hora × horas + insumos (digitados). Preço = custo × multiplicador OU custo ÷ (1 − margem desejada), à escolha.
    Peças: cada peça com preço de custo e de venda; margem líquida = venda − custo. Orçamentos antigos (Preparação/Acabamento) continuam abrindo no formato antigo. */
 const OQ2_SET=[{k:'serv', nome:'Serviço', rec:/^RECEITA DE VENDAS$|^SERVICOS?$/, novo:'Serviços'},{k:'pec', nome:'Peças', rec:/PECA/, novo:'Venda de peças'}];
-const OQ2_DEF={hora:86, horasMes:180, lucro:30};
+const OQ2_DEF={hora:86, horasMes:180, lucro:30, mult:2.5, modo:'margem'};
 const oq2Padrao=()=>Object.assign({}, OQ2_DEF, (S.cfg.orcPadrao2||{}));
 const oq2Ins=()=>({desc:'', valor:0});
 const oq2Pec=()=>({desc:'', qtd:1, custo:0, venda:0});
 const ehV2=o=>!!(o && o.v===2);
 function oq2Novo(){ const P=oq2Padrao(); return {v:2, numero:orcNumProx(), data:hoje(), cliente:'', veiculo:'', orcamentista:S.cfg.orcamentista||'Dionatan', obs:'', status:'aberto',
-  serv:{hora:P.hora, horas:0, insumos:[oq2Ins(),oq2Ins()], fixoH:null, horasMes:P.horasMes, varP:null, lucro:P.lucro}, pecas:[oq2Pec(),oq2Pec()]}; }
+  serv:{hora:P.hora, modo:P.modo, mult:P.mult, horas:0, insumos:[oq2Ins(),oq2Ins()], fixoH:null, horasMes:P.horasMes, varP:null, lucro:P.lucro}, pecas:[oq2Pec(),oq2Pec()]}; }
 const r2=n=>Math.round((+n||0)*100)/100;
 /* Referências do ERP para o preço do Dionatan: mesmos meses fechados do Custeio.
    Fixo sem pessoal = despesas fixas − grupo "Despesas com pessoal" − CMO (o pessoal já está no custo hora da equipe).
@@ -2998,7 +2999,7 @@ function oq2Calc(o){ const s=o.serv||{}, R={};
   const eq=1, pe=1, prop=1, hs=+s.horas||0;
   const horaServ=r2((+s.hora||0)*prop), mo=r2(horaServ*hs), ins=r2((s.insumos||[]).reduce((a,i)=>a+(+i.valor||0),0)), direto=r2(mo+ins);
   const hm=0, fixoHAuto=0, fixoH=0, fixo=0, custo=direto;
-  const varP=0, luc=(+s.lucro||0)/100, d=1-varP-luc, preco=d>0?r2(custo/d):0;
+  const varP=0, mk=s.modo==='markup', mlt=+(s.mult??oq2Padrao().mult)||0, luc=(+s.lucro||0)/100, d=mk?1:1-varP-luc, preco=mk?r2(custo*mlt):(d>0?r2(custo/d):0);
   const dv=r2(preco*varP), lucro=r2(preco-custo-dv), mc=r2(preco-ins-dv);
   const ps=(o.pecas||[]).map(p=>{ const q=+p.qtd||0, c=r2(q*(+p.custo||0)), v=r2(q*(+p.venda||0)); return {c, v, m:r2(v-c), mp:v?(v-c)/v:0}; });
   const pc=r2(ps.reduce((a,x)=>a+x.c,0)), pv=r2(ps.reduce((a,x)=>a+x.v,0));
@@ -3022,10 +3023,12 @@ function vOrcV2(O, trav){
       <div class="oq-tot"><span>Total de insumos</span><b id="oq2_ins">—</b></div></div>
     <div class="oq-sub"><span>= Custo total (mão de obra + insumos)</span><b id="oq2_dir">—</b></div>
     <div class="oq2-blk"><div class="oq2-bt">Formação do preço</div>
-      <div class="oq2-g"><div class="f"><label for="oq2l">Margem desejada (% da venda)</label>${num('lucro',fnum(s.lucro,1),'id="oq2l"')}</div><div></div></div></div>
+      <div class="f"><label>Como calcular o preço</label><div class="chips" role="group" aria-label="Como calcular o preço"><button type="button" data-act="oq2Modo" data-v="margem" aria-pressed="${s.modo!=='markup'}"${dis}>Pela margem</button><button type="button" data-act="oq2Modo" data-v="markup" aria-pressed="${s.modo==='markup'}"${dis}>Pelo markup</button></div></div>
+      <div class="oq2-g"><div class="f oq2-opc ${s.modo!=='markup'?'on':''}"><label for="oq2l">Margem desejada (% da venda)</label>${num('lucro',fnum(s.lucro,1),'id="oq2l"')}<span class="hint">preço = custo ÷ (1 − margem)</span></div>
+        <div class="f oq2-opc ${s.modo==='markup'?'on':''}"><label for="oq2k">Markup (multiplicador)</label>${num('mult',fnum(s.mult??oq2Padrao().mult,2),'id="oq2k"')}<span class="hint">preço = custo × markup</span></div></div></div>
     <div class="oq-preco"><small>Preço do serviço</small><b id="oq2_preco">—</b></div>
     <div class="oq2-dem" id="oq2_dem"></div>
-    ${trav?'':`<button type="button" class="linkbtn" data-act="oq2Padrao" style="align-self:flex-start">Salvar custo hora e margem desejada como padrão dos próximos orçamentos</button>`}
+    ${trav?'':`<button type="button" class="linkbtn" data-act="oq2Padrao" style="align-self:flex-start">Salvar custo hora, margem, markup e forma de cálculo como padrão dos próximos orçamentos</button>`}
   </section>
   <section class="card oq-setor" aria-label="Orçamento de peças">
     <div class="oq-setor-h"><h2>2 · Orçamento peças</h2></div>
@@ -3044,9 +3047,10 @@ function oq2Ler(){ const O=F.orcEd; if(!ehV2(O)) return; document.querySelectorA
 function oq2Atualizar(O,c){ const t=(id,v)=>{ const e=$('#'+id); if(e) e.textContent=v; }, h=(id,v)=>{ const e=$('#'+id); if(e) e.innerHTML=v; }, S_=c.serv, R=S_.R;
   t('oq2_mo',brl(S_.mo)); t('oq2_ins',brl(S_.ins)); t('oq2_dir',brl(S_.direto));
   t('oq2_preco', S_.d>0?brl(S_.preco):'Inviável');
-  h('oq2_dem', S_.d>0&&S_.preco>0?`<div><span>Preço = custo total ÷ (1 − ${pct(S_.luc)})</span><b>${brl(S_.custo)} ÷ ${fnum(S_.d,4)}</b></div>
+  const mk=O.serv.modo==='markup';
+  h('oq2_dem', S_.d>0&&S_.preco>0?`<div><span>${mk?'Preço = custo total × markup':'Preço = custo total ÷ (1 − '+pct(S_.luc)+')'}</span><b>${mk?brl(S_.custo)+' × '+fnum(S_.mult,2):brl(S_.custo)+' ÷ '+fnum(S_.d,4)}</b></div>
     <div class="oq2-luc"><span>(=) Margem do serviço</span><b class="${S_.lucro<0?'neg-t':'pos-t'}">${brl(S_.lucro)} · ${pct(S_.preco?S_.lucro/S_.preco:0)}</b></div>
-    <div><span>Equivale a multiplicar o custo por</span><b>${fnum(S_.mult,2)}×</b></div>`
+    ${mk?'':`<div><span>Equivale a um markup de</span><b>${fnum(S_.mult,2)}×</b></div>`}`
     : S_.d<=0?`<div class="warnbox" style="margin:0">A margem desejada precisa ser menor que 100%.</div>`:'');
   c.pec.linhas.forEach((x,i)=>{ const e=$('#oq2_pm_'+i); if(e){ e.textContent=x.v||x.c?brl(x.m)+'\n'+pct(x.mp):'—'; e.classList.toggle('neg-t',x.m<0); } });
   t('oq2_pc',brl(c.pec.custo)); t('oq2_pv',brl(c.pec.preco)); t('oq2_ml',brl(c.pec.margem)); t('oq2_mlp',c.pec.preco?pct(c.pec.mp):'—');
@@ -3054,7 +3058,8 @@ function oq2Atualizar(O,c){ const t=(id,v)=>{ const e=$('#'+id); if(e) e.textCon
 ACT.oq2Add=el=>{ oqLer(); const O=F.orcEd; if(el.dataset.l==='ins') O.serv.insumos.push(oq2Ins()); else O.pecas.push(oq2Pec()); render();
   const ls=document.querySelectorAll(el.dataset.l==='ins'?'[data-oq2$=".desc"][data-oq2^="ins."]':'[data-oq2$=".desc"][data-oq2^="pec."]'); if(ls.length) ls[ls.length-1].focus(); };
 ACT.oq2Del=el=>{ oqLer(); const O=F.orcEd, a=el.dataset.l==='ins'?O.serv.insumos:O.pecas; a.splice(+el.dataset.i,1); if(!a.length) a.push(el.dataset.l==='ins'?oq2Ins():oq2Pec()); render(); };
-ACT.oq2Padrao=()=>{ oqLer(); const x=F.orcEd.serv; S.cfg.orcPadrao2=Object.assign({},S.cfg.orcPadrao2||{},{hora:+x.hora||0, lucro:+x.lucro||0}); salvarDoc('geral'); toast('Padrão salvo: custo hora '+brl(x.hora)+' · margem desejada '+fnum(x.lucro,1)+'%'); };
+ACT.oq2Modo=el=>{ oqLer(); F.orcEd.serv.modo=el.dataset.v; render(); };
+ACT.oq2Padrao=()=>{ oqLer(); const x=F.orcEd.serv; S.cfg.orcPadrao2=Object.assign({},S.cfg.orcPadrao2||{},{hora:+x.hora||0, lucro:+x.lucro||0, mult:+(x.mult??2.5)||0, modo:x.modo==='markup'?'markup':'margem'}); salvarDoc('geral'); toast('Padrão salvo: custo hora '+brl(x.hora)+' · margem '+fnum(x.lucro,1)+'% · markup '+fnum(x.mult??2.5,2)+' · cálculo '+(x.modo==='markup'?'pelo markup':'pela margem')); };
 function oq2Limpo(O){ if(!ehV2(O)) return O; O.serv.insumos=O.serv.insumos.filter(i=>String(i.desc||'').trim()||+i.valor); O.pecas=O.pecas.filter(p=>String(p.desc||'').trim()||+p.custo||+p.venda); return O; }
 /* Conta de receita para serviço e peças: usa a existente ou cria na aprovação */
 function oq2Conta(s){ let id=contaReceita(s.rec); if(id) return id; const g=gruposDe('receita').find(g=>g.contas.some(c=>/PREPAR|ACABAM|RECEITA DE VENDAS/.test(norm(c.nome))))||gruposDe('receita')[0]; if(!g) return '';
@@ -3104,7 +3109,7 @@ function vOrcamentos(){
     </div>
     ${!trav?`<div class="oq-acoes oq-acoes2">${ehV2(O)?`${st!=='cliente'?`<button class="btn" type="button" data-act="oq2Cliente">Cliente aprovou</button>`:''}<button class="btn primary" type="button" data-act="oq2PassarDet">Passar para o orçamento detalhado</button>`:`<button class="btn primary" type="button" data-act="oqAprovar">Aprovar e gerar conta a receber</button>`}${salvo&&(st==='aberto'||st==='cliente')?`<button class="btn" type="button" data-act="oqRecusar">Marcar como recusado</button>`:''}${st==='recusado'?`<button class="btn" type="button" data-act="oqReabrir">Reabrir</button>`:''}${salvo?`<button class="btn danger" type="button" data-act="oqExcluir">Excluir orçamento</button>`:''}</div>`:''}
     <textarea id="oqResumo" readonly aria-label="Resumo do orçamento" class="oq-resumo"></textarea>
-    <p class="note">Campos em amarelo são editáveis. ${ehV2(O)?'Serviço: custo total = mão de obra + insumos; preço = custo total ÷ (1 − margem desejada). Peças: margem = venda − custo; o cliente vê só o preço de venda.':'Preço do setor = (valor da hora × horas + material) × multiplicador.'} "Salvar orçamento" guarda o orçamento com o número da tela; baixar o PDF também salva. A numeração começa em ${ORC_INICIO} e segue a mesma sequência em qualquer aparelho (pode ser alterada à mão). "Aprovar" lança o orçamento em Contas a receber: unificado (valor total, em parcelas) ou separado por setor. O PDF e o resumo levam só os preços finais de cada setor, sem custos e multiplicadores.</p>
+    <p class="note">Campos em amarelo são editáveis. ${ehV2(O)?'Serviço: custo total = mão de obra + insumos; preço pela margem (custo ÷ (1 − margem)) ou pelo markup (custo × markup), à escolha. Peças: margem = venda − custo; o cliente vê só o preço de venda.':'Preço do setor = (valor da hora × horas + material) × multiplicador.'} "Salvar orçamento" guarda o orçamento com o número da tela; baixar o PDF também salva. A numeração começa em ${ORC_INICIO} e segue a mesma sequência em qualquer aparelho (pode ser alterada à mão). "Aprovar" lança o orçamento em Contas a receber: unificado (valor total, em parcelas) ou separado por setor. O PDF e o resumo levam só os preços finais de cada setor, sem custos e multiplicadores.</p>
   </section>
   ${F.orcAnt?`<section class="card oq-ant" aria-label="Orçamentos anteriores">
     <div class="oq-ant-h"><h2>Orçamentos anteriores</h2><div class="chips" role="group" aria-label="Situação">${['todos','aberto','cliente','detalhado','aprovado','recusado'].map(k=>`<button type="button" data-act="orcSt" data-v="${k}" aria-pressed="${F.orcSt===k}">${k==='todos'?'Todos':ORC_ST[k]}</button>`).join('')}</div><button class="btn sm" type="button" data-act="oqAnt">Fechar</button></div>
