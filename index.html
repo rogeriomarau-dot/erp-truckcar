@@ -235,6 +235,7 @@ input.n{text-align:right}
 .vil-fix{border-left-color:var(--rd-fixa,#4c6ef5)}.vil-var{border-left-color:var(--rd-desp,#e8590c)}.vil-cv{border-left-color:#e0a41c}
 .vil-h{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:6px}.vil-h h3{margin:0;font-size:16px}
 .vil-tot{display:flex;flex-direction:column;align-items:flex-end;gap:1px;font-size:12.5px;color:var(--muted)}.vil-tot b{font-family:var(--f-num);font-size:16px}
+.eq-h{margin:14px 0 6px;font-size:15px}.eq-h .hint{font-weight:400;margin-left:6px}.eq-t td .cell-sub{font-size:11px}
 .vil-cur{background:#fff8e1}.vil-t th.vil-cur{color:#7a5a00}.vil-curtot{margin-top:4px;padding:3px 8px;border-radius:8px;background:#fff8e1;color:#4a3b10;font-size:12px}.vil-curtot b{font-family:var(--f-num);font-size:13px}
 .vil-alerta{margin:4px 0 8px;padding:8px 12px;border-radius:10px;background:#fff4d6;border:1px solid #f1d27a;font-size:13px;color:#4a3b10}
 .vil-t td small{font-size:11px;opacity:.85}.vil-t .pill{font-size:10px;padding:1px 6px;margin-left:4px}
@@ -913,6 +914,55 @@ function viloesSecao(){ const h=hoje().slice(0,7), ref=F.vilRef||ymAdd(h,-1), D=
 CHG.vilRef=el=>{ F.vilRef=el.value; render(); };
 ACT.vilTodos=el=>{ F.vilTodos[el.dataset.k]=!F.vilTodos[el.dataset.k]; render(); };
 
+/* ===== Dashboard: equipe — custo de cada funcionário, custo por hora e faturamento × equipe ===== */
+F.eqRef=null;
+const EQ_FUNC=/SALARI|ADIANT|HORA|EXTRA|RESCIS|FERIAS|FÉRIAS|13|DECIMO|BONIF|COMISS|GRATIF|PREMIO/;
+function equipeDados(ref){ const cur=hoje().slice(0,7), ms=[ymAdd(ref,-2),ymAdd(ref,-1),ref].concat(ref<cur?[cur]:[]), mi=Object.fromEntries(ms.map((x,i)=>[x,i]));
+  const IX=IDX(), func={}, enc=ms.map(()=>0), encContas={}, VC={}, Vy=y=>VC[y]||(VC[y]=valoresPorConta(y,'comp'));
+  ativos().forEach(l=>{ if(l.tipo!=='P') return; const i=mi[(l.competencia||'').slice(0,7)]; if(i===undefined) return;
+    partes(l).forEach(p=>{ const x=IX[p.contaId]; if(!x||!x.g||!/PESSOAL/.test(norm(x.g.nome))) return; const v=+p.valor||0; if(!v) return;
+      if(EQ_FUNC.test(norm(x.c.nome))){ const nome=(nomePessoa(l)||'Sem nome').trim(), k=l.pessoaId||norm(nome); const f=func[k]=func[k]||{nome, v:ms.map(()=>0), contas:{}}; f.v[i]+=v; f.contas[x.c.nome]=(f.contas[x.c.nome]||0)+v; }
+      else { enc[i]+=v; encContas[x.c.nome]=(encContas[x.c.nome]||0)+v; } }); });
+  const rec=ms.map(x=>{ const V=Vy(+x.slice(0,4)), m=+x.slice(5,7)-1; let r=0; gruposDe('receita').forEach(g=>g.contas.forEach(c=>r+=(V[c.id]||[])[m]||0)); return r; });
+  const fs=Object.values(func).sort((a,b)=>b.v.reduce((s,v)=>s+v,0)-a.v.reduce((s,v)=>s+v,0));
+  const folha=ms.map((_,i)=>fs.reduce((a,f)=>a+f.v[i],0)), n=ms.map((_,i)=>fs.filter(f=>f.v[i]>0).length);
+  return {ms, cur:ms.length>3, fs, folha, enc, encContas, n, rec}; }
+function equipeSecao(){ const h=hoje().slice(0,7), ref=F.eqRef||ymAdd(h,-1), D=equipeDados(ref), ms=D.ms, hm=+((S.cfg.equipe||{}).horas)||180;
+  if(!D.fs.length && !D.enc.some(Boolean)) return `<div class="card"><div class="card-h"><h2>Equipe · custo por funcionário</h2></div><p class="note">Sem lançamentos no grupo Despesas com pessoal entre ${ymLbl(ms[0])} e ${ymLbl(ms[ms.length-1])}.</p></div>`;
+  const parc=i=>D.cur&&i===3, cab=ms.map((x,i)=>`<th class="r${parc(i)?' vil-cur':''}">${MES3[+x.slice(5)-1]}/${x.slice(2,4)}${parc(i)?' até agora':''}</th>`).join('');
+  const rowsF=D.fs.map(f=>`<tr><td><div class="cell-main">${esc(f.nome)}</div><div class="cell-sub">${esc(Object.keys(f.contas).join(' · '))}</div></td>${f.v.map((v,i)=>`<td class="r${parc(i)?' vil-cur':''}">${v?`${fmoney(v)}<div class="cell-sub">${parc(i)?'':brl(v/hm)+'/h · '}${pct(D.folha[i]?v/D.folha[i]:0)} da folha</div>`:'–'}</td>`).join('')}</tr>`).join('');
+  const tot=D.folha.map((v,i)=>v+D.enc[i]);
+  const ind=(t,f,hint)=>`<tr><td>${t}${hint?`<div class="cell-sub">${hint}</div>`:''}</td>${ms.map((_,i)=>`<td class="r${parc(i)?' vil-cur':''}">${f(i)}</td>`).join('')}</tr>`;
+  const x=(a,b)=>b?fnum(a/b,2)+'×':'–';
+  const indic=[
+    ind('<b>Faturamento</b>',i=>D.rec[i]?brl(D.rec[i]):'–'),
+    ind('Nº de funcionários',i=>D.n[i]||'–','com salário, adiantamento, horas extras ou rescisão no mês'),
+    ind('Folha dos funcionários',i=>D.folha[i]?brl(D.folha[i]):'–','salários, adiantamentos, horas extras, rescisões…'),
+    ind('Encargos e benefícios',i=>D.enc[i]?brl(D.enc[i]):'–', Object.keys(D.encContas).slice(0,4).join(', ')||'INSS, FGTS, vale-transporte…'),
+    ind('<b>Custo total com pessoal</b>',i=>tot[i]?'<b>'+brl(tot[i])+'</b>':'–'),
+    ind('Custo com pessoal % do faturamento',i=>D.rec[i]&&tot[i]?`<span class="${tot[i]/D.rec[i]>0.4?'neg-t':''}">${pct(tot[i]/D.rec[i])}</span>`:'–'),
+    ind('<b>Faturamento por funcionário</b>',i=>D.n[i]&&D.rec[i]?'<b>'+brl(D.rec[i]/D.n[i])+'</b>':'–'),
+    ind('Custo médio por funcionário',i=>D.n[i]?brl(tot[i]/D.n[i]):'–'),
+    ind('Faturamento ÷ custo com pessoal',i=>x(D.rec[i],tot[i]),'quantos reais entram para cada R$ 1 de pessoal'),
+    ind('Custo da hora da equipe',i=>parc(i)?'<span class="cell-sub">mês aberto</span>':(tot[i]?brl(tot[i]/hm):'–'),'custo total com pessoal ÷ '+fnum(hm,0)+' h')
+  ].join('');
+  const opts=[]; for(let i=1;i<=18;i++){ const y=ymAdd(h,-i+1); opts.push(`<option value="${y}"${y===ref?' selected':''}>${ymLbl(y)}${i===1?' (mês atual, parcial)':''}</option>`); }
+  const fech=[0,1,2].filter(i=>D.rec[i]||tot[i]);
+  const graf=fech.length>=2? graficoLinhas([{n:'Faturamento',v:[0,1,2].map(i=>Math.round(D.rec[i])),c:'var(--rd-rec)'},{n:'Custo com pessoal',v:[0,1,2].map(i=>Math.round(tot[i])),c:'var(--rd-desp)'}], ms.slice(0,3).map((y,i)=>ymLbl(y)+' · '+D.n[i]+' func.'), [0,1,2].map(i=>tot[i]&&D.rec[i]?tot[i]/D.rec[i]:null), [0,1,2].map(i=>!!(D.rec[i]||tot[i]))) :'';
+  return `<div class="card"><div class="card-h"><h2>Equipe · custo por funcionário e faturamento</h2>
+      <div class="row" style="align-items:flex-end"><div class="f" style="min-width:110px"><label for="eqHoras">Horas/mês por funcionário</label><input id="eqHoras" class="n" inputmode="decimal" data-chg="eqHoras" value="${fnum(hm,0)}"></div>
+      <div class="f" style="min-width:200px"><label for="eqRef">Mês de referência</label><select id="eqRef" data-chg="eqRef">${opts.join('')}</select></div></div></div>
+    <p class="note" style="margin:0 0 10px">Lançamentos do grupo <b>Despesas com pessoal</b> por competência. Cada funcionário é o nome lançado no Contas a pagar. Custo por hora = custo do funcionário no mês ÷ ${fnum(hm,0)} h. INSS, FGTS e benefícios aparecem em "Encargos e benefícios", sem dividir por funcionário.</p>
+    <h3 class="eq-h">Faturamento × equipe</h3>
+    <div class="tscroll"><table class="t eq-t"><thead><tr><th>Indicador</th>${cab}</tr></thead><tbody>${indic}</tbody></table></div>
+    ${graf?`<div style="margin-top:12px">${graf}<div class="legend"><span><i style="background:var(--rd-rec)"></i>Faturamento</span><span><i style="background:var(--rd-desp)"></i>Custo com pessoal</span><span>% = custo com pessoal sobre o faturamento</span></div></div>`:''}
+    ${D.fs.length?`<h3 class="eq-h">Custo de cada funcionário <span class="hint">R$ no mês · custo por hora · participação na folha</span></h3>
+    <div class="tscroll"><table class="t eq-t"><thead><tr><th>Funcionário</th>${cab}</tr></thead><tbody>${rowsF}</tbody>
+      <tfoot><tr><td>Folha dos funcionários</td>${D.folha.map((v,i)=>`<td class="r${parc(i)?' vil-cur':''}">${v?fmoney(v):'–'}</td>`).join('')}</tr></tfoot></table></div>`:''}
+  </div>`; }
+CHG.eqRef=el=>{ F.eqRef=el.value; render(); };
+CHG.eqHoras=el=>{ const v=parseNum(el.value); if(!(v>0)){ toast('Informe as horas por mês.'); render(); return; } S.cfg.equipe=Object.assign({},S.cfg.equipe||{},{horas:v}); salvarDoc('geral'); render(); };
+
 function vPainel(){
   const ym=F.painelMes, ano=+ym.slice(0,4), h=hoje();
   if(!S.lancamentos.length){
@@ -966,6 +1016,7 @@ function vPainel(){
       : vazio('Sem lançamentos em '+gtit,'O gráfico aparece quando houver receitas e despesas lançadas com competência no período.')}
   </div>
   ${(()=>{ try{ return viloesSecao(); }catch(e){ console.error(e); return ''; } })()}
+  ${(()=>{ try{ return equipeSecao(); }catch(e){ console.error(e); return ''; } })()}
   ${abcSecao(meses, perTxt)}
   <div class="card"><div class="card-h"><h2>Próximos vencimentos</h2><span class="hint">Em aberto e vencidos · <span style="color:var(--orange)">azul = a vencer</span> · <span style="color:var(--neg)">vermelho = vencido</span> · saldo acumulado = a receber − a pagar</span></div>
     ${lista.length? `<div class="tscroll"><table class="t"><thead><tr><th>Vencimento</th><th>Tipo</th><th>Fornecedor / cliente</th><th>Categoria</th><th class="r">Valor</th><th>Situação</th><th class="r">Saldo acumulado</th></tr></thead><tbody>
