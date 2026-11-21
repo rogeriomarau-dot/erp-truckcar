@@ -878,6 +878,7 @@ const ymAdd=(ym,k)=>{ let y=+ym.slice(0,4), m=+ym.slice(5,7)-1+k; y+=Math.floor(
 const ymLbl=ym=>MES3[+ym.slice(5,7)-1]+'/'+ym.slice(2,4);
 /* ===== Dashboard: vilões das despesas — variação mês a mês, últimos 3 meses (competência) ===== */
 F.vilRef=null; F.vilTodos={};
+const dadosIni=()=>(S.cfg&&S.cfg.inicioDados)||'2026-09';
 function viloesDados(ref){ const T=tratPE(), cur=hoje().slice(0,7), ms=[ymAdd(ref,-2),ymAdd(ref,-1),ref].concat(ref<cur?[cur]:[]), VC={}, Vy=y=>VC[y]||(VC[y]=valoresPorConta(y,'comp'));
   const cats={F:{nome:'Despesas fixas', cls:'fix', ls:{}}, V:{nome:'Despesas variáveis', cls:'var', ls:{}}, C:{nome:'Custos variáveis (insumos e peças)', cls:'cv', ls:{}}};
   const rec=ms.map(x=>{ const V=Vy(+x.slice(0,4)), m=+x.slice(5,7)-1; let r=0; gruposDe('receita').forEach(g=>g.contas.forEach(c=>r+=(V[c.id]||[])[m]||0)); return r; });
@@ -886,30 +887,30 @@ function viloesDados(ref){ const T=tratPE(), cur=hoje().slice(0,7), ms=[ymAdd(re
     if(!v.some(Boolean)) return; cats[cat].ls[c.id]={id:c.id, nome:c.nome, grupo:g.nome, v}; })));
   Object.values(cats).forEach(o=>{ o.ls=Object.values(o.ls); o.tot=ms.map((_,i)=>o.ls.reduce((a,x)=>a+x.v[i],0)); });
   return {ms, rec, cats, cur:ms.length>3}; }
-function viloesSecao(){ const h=hoje().slice(0,7), ref=F.vilRef||ymAdd(h,-1), D=viloesDados(ref), ms=D.ms;
+function viloesSecao(){ const h=hoje().slice(0,7), INI=dadosIni(); let ref=F.vilRef||ymAdd(h,-1); if(ref<ymAdd(INI,1)) ref=ymAdd(INI,1); const D=viloesDados(ref), ms=D.ms, ok=i=>ms[i]>=INI;
   const vp=(a,b)=>b? (a-b)/Math.abs(b) : (a?1:0);
   const varTxt=(a,b)=>{ const d=a-b; if(!d) return '<span class="cell-sub">=</span>'; return `<span class="${d>0?'neg-t':'pos-t'}">${d>0?'▲ +':'▼ −'}${fmoney(Math.abs(d))}${b?` <small>(${d>0?'+':'−'}${pct(Math.abs(d/b))})</small>`:' <small>(novo)</small>'}</span>`; };
   const curCel=(a,b)=>`<td class="r vil-cur">${a?fmoney(a):'–'}${b>0&&a?`<div class="cell-sub ${a>=b?'neg-t':''}">${pct(a/b)} de ${MES3[+ms[2].slice(5)-1]}</div>`:''}</td>`;
   const bloco=(key)=>{ const o=D.cats[key]; if(!o.ls.length) return '';
     const subiu=o.ls.filter(x=>x.v[2]-x.v[1]>0.005).sort((a,b)=>(b.v[2]-b.v[1])-(a.v[2]-a.v[1])), caiu=o.ls.filter(x=>x.v[1]-x.v[2]>0.005).sort((a,b)=>(b.v[1]-b.v[2])-(a.v[1]-a.v[2]));
     const todos=F.vilTodos[key], ver=todos?subiu:subiu.slice(0,5), dT=o.tot[2]-o.tot[1], aumento=subiu.reduce((a,x)=>a+x.v[2]-x.v[1],0);
-    const rows=ver.map((x,i)=>{ const seq=x.v[0]<x.v[1]&&x.v[1]<x.v[2]; return `<tr><td class="num">${i+1}º</td><td><div class="cell-main">${esc(x.nome)}${seq?' <span class="pill vencido" title="Subiu nos dois meses seguidos">sobe 2 meses</span>':''}</div><div class="cell-sub">${esc(x.grupo)}</div></td>
-      ${x.v.slice(0,3).map(v=>`<td class="r">${v?fmoney(v):'–'}</td>`).join('')}<td class="r">${varTxt(x.v[2],x.v[1])}</td><td class="r">${aumento>0?pct((x.v[2]-x.v[1])/aumento):''}</td>${D.cur?curCel(x.v[3],x.v[2]):''}</tr>`; }).join('');
+    const rows=ver.map((x,i)=>{ const seq=ok(0)&&x.v[0]<x.v[1]&&x.v[1]<x.v[2]; return `<tr><td class="num">${i+1}º</td><td><div class="cell-main">${esc(x.nome)}${seq?' <span class="pill vencido" title="Subiu nos dois meses seguidos">sobe 2 meses</span>':''}</div><div class="cell-sub">${esc(x.grupo)}</div></td>
+      ${x.v.slice(0,3).map((v,j)=>ok(j)?`<td class="r">${v?fmoney(v):'–'}</td>`:'').join('')}<td class="r">${varTxt(x.v[2],x.v[1])}</td><td class="r">${aumento>0?pct((x.v[2]-x.v[1])/aumento):''}</td>${D.cur?curCel(x.v[3],x.v[2]):''}</tr>`; }).join('');
     return `<div class="vil-blk vil-${o.cls}"><div class="vil-h"><h3>${o.nome}</h3>
         <div class="vil-tot"><span>${MES3[+ms[1].slice(5)-1]} ${brl(o.tot[1])} → ${MES3[+ms[2].slice(5)-1]} ${brl(o.tot[2])}</span><b class="${dT>0?'neg-t':dT<0?'pos-t':''}">${dT>0?'▲ +':dT<0?'▼ −':''}${brl(Math.abs(dT))}${o.tot[1]?' ('+(dT>0?'+':dT<0?'−':'')+pct(Math.abs(vp(o.tot[2],o.tot[1])))+')':''}</b>
         ${D.rec[2]?`<small>${pct(o.tot[1]&&D.rec[1]?o.tot[1]/D.rec[1]:0)} → ${pct(o.tot[2]/D.rec[2])} da receita</small>`:''}
         ${D.cur?`<span class="vil-curtot">${MES3[+ms[3].slice(5)-1]} até agora (dia ${+hoje().slice(8,10)}): <b>${brl(o.tot[3])}</b>${o.tot[2]?` · ${pct(o.tot[3]/o.tot[2])} de ${MES3[+ms[2].slice(5)-1]}`:''}</span>`:''}</div></div>
       ${D.cur?(()=>{ const pass=o.ls.filter(x=>x.v[2]>0&&x.v[3]>x.v[2]).sort((a,b)=>(b.v[3]-b.v[2])-(a.v[3]-a.v[2])), novas=o.ls.filter(x=>!x.v[2]&&x.v[3]>0).sort((a,b)=>b.v[3]-a.v[3]);
         return pass.length||novas.length?`<div class="vil-alerta"><b>Atenção em ${MES3[+ms[3].slice(5)-1]}:</b> ${pass.slice(0,5).map(x=>`${esc(x.nome)} já está em ${brl(x.v[3])}, acima de ${MES3[+ms[2].slice(5)-1]} inteiro (${brl(x.v[2])})`).join(' · ')}${pass.length&&novas.length?' · ':''}${novas.slice(0,3).map(x=>`${esc(x.nome)} apareceu agora (${brl(x.v[3])}), não tinha em ${MES3[+ms[2].slice(5)-1]}`).join(' · ')}</div>`:''; })():''}
-      ${subiu.length?`<div class="tscroll"><table class="t vil-t"><thead><tr><th></th><th>Conta que mais subiu</th>${ms.slice(0,3).map(x=>`<th class="r">${MES3[+x.slice(5)-1]}/${x.slice(2,4)}</th>`).join('')}<th class="r">Variação ${MES3[+ms[1].slice(5)-1]}→${MES3[+ms[2].slice(5)-1]}</th><th class="r" title="Parte do aumento total da categoria">Peso no aumento</th>${D.cur?`<th class="r vil-cur">${MES3[+ms[3].slice(5)-1]}/${ms[3].slice(2,4)} até agora</th>`:''}</tr></thead><tbody>${rows}</tbody></table></div>
+      ${subiu.length?`<div class="tscroll"><table class="t vil-t"><thead><tr><th></th><th>Conta que mais subiu</th>${ms.slice(0,3).map((x,j)=>ok(j)?`<th class="r">${MES3[+x.slice(5)-1]}/${x.slice(2,4)}</th>`:'').join('')}<th class="r">Variação ${MES3[+ms[1].slice(5)-1]}→${MES3[+ms[2].slice(5)-1]}</th><th class="r" title="Parte do aumento total da categoria">Peso no aumento</th>${D.cur?`<th class="r vil-cur">${MES3[+ms[3].slice(5)-1]}/${ms[3].slice(2,4)} até agora</th>`:''}</tr></thead><tbody>${rows}</tbody></table></div>
         ${subiu.length>5?`<button type="button" class="btn sm" data-act="vilTodos" data-k="${key}" aria-expanded="${!!todos}">${todos?'Mostrar só os 5 maiores':'Ver todas as '+subiu.length+' contas que subiram'}</button>`:''}`
         :`<p class="note" style="margin:6px 0">Nenhuma conta subiu de ${MES3[+ms[1].slice(5)-1]} para ${MES3[+ms[2].slice(5)-1]}.</p>`}
       ${caiu.length?`<p class="note" style="margin:6px 0 0">Maiores quedas: ${caiu.slice(0,3).map(x=>`<b>${esc(x.nome)}</b> <span class="pos-t">−${fmoney(x.v[1]-x.v[2])}</span>`).join(' · ')}</p>`:''}</div>`; };
-  const opts=[]; for(let i=1;i<=18;i++){ const x=ymAdd(h,-i+1); opts.push(`<option value="${x}"${x===ref?' selected':''}>${ymLbl(x)}${i===1?' (mês atual, parcial)':''}</option>`); }
+  const opts=[]; for(let i=1;i<=18;i++){ const x=ymAdd(h,-i+1); if(x<ymAdd(INI,1)) break; opts.push(`<option value="${x}"${x===ref?' selected':''}>${ymLbl(x)}${i===1?' (mês atual, parcial)':''}</option>`); }
   const corpo=['F','V','C'].map(bloco).join('');
-  return `<div class="card"><div class="card-h"><h2>Vilões das despesas · ${ymLbl(ms[0])} a ${ymLbl(ms[2])}${D.cur?' + '+ymLbl(ms[3])+' parcial':''}</h2>
+  return `<div class="card"><div class="card-h"><h2>Vilões das despesas · ${ymLbl(ok(0)?ms[0]:ms[1])} a ${ymLbl(ms[2])}${D.cur?' + '+ymLbl(ms[3])+' parcial':''}</h2>
       <div class="f" style="min-width:200px"><label for="vilRef">Mês de referência</label><select id="vilRef" data-chg="vilRef">${opts.join('')}</select></div></div>
-    <p class="note" style="margin:0 0 10px">Contas que mais aumentaram de ${ymLbl(ms[1])} para ${ymLbl(ms[2])}, separadas em despesas fixas, despesas variáveis e custos variáveis, com os 3 últimos meses lado a lado. ${D.cur?` A última coluna acompanha o mês vigente em tempo real, com quanto cada conta já representa do mês de referência inteiro.`:''} Regime de competência, classificação do Plano de contas. Receita: ${ms.map((x,i)=>MES3[+x.slice(5)-1]+(i===3?' (até agora)':'')+' '+brl(D.rec[i])).join(' · ')}.</p>
+    <p class="note" style="margin:0 0 10px">Contas que mais aumentaram de ${ymLbl(ms[1])} para ${ymLbl(ms[2])}, separadas em despesas fixas, despesas variáveis e custos variáveis, com os últimos meses lado a lado (desde ${ymLbl(INI)}). ${D.cur?` A última coluna acompanha o mês vigente em tempo real, com quanto cada conta já representa do mês de referência inteiro.`:''} Regime de competência, classificação do Plano de contas. Receita: ${ms.map((x,i)=>ok(i)?MES3[+x.slice(5)-1]+(i===3?' (até agora)':'')+' '+brl(D.rec[i]):'').filter(Boolean).join(' · ')}.</p>
     ${corpo||'<p class="note">Sem despesas lançadas nesses meses.</p>'}</div>`; }
 CHG.vilRef=el=>{ F.vilRef=el.value; render(); };
 ACT.vilTodos=el=>{ F.vilTodos[el.dataset.k]=!F.vilTodos[el.dataset.k]; render(); };
@@ -927,12 +928,12 @@ function equipeDados(ref){ const cur=hoje().slice(0,7), ms=[ymAdd(ref,-2),ymAdd(
   const fs=Object.values(func).sort((a,b)=>b.v.reduce((s,v)=>s+v,0)-a.v.reduce((s,v)=>s+v,0));
   const folha=ms.map((_,i)=>fs.reduce((a,f)=>a+f.v[i],0)), n=ms.map((_,i)=>fs.filter(f=>f.v[i]>0).length);
   return {ms, cur:ms.length>3, fs, folha, enc, encContas, n, rec}; }
-function equipeSecao(){ const h=hoje().slice(0,7), ref=F.eqRef||ymAdd(h,-1), D=equipeDados(ref), ms=D.ms, hm=+((S.cfg.equipe||{}).horas)||180;
-  if(!D.fs.length && !D.enc.some(Boolean)) return `<div class="card"><div class="card-h"><h2>Equipe · custo por funcionário</h2></div><p class="note">Sem lançamentos no grupo Despesas com pessoal entre ${ymLbl(ms[0])} e ${ymLbl(ms[ms.length-1])}.</p></div>`;
-  const parc=i=>D.cur&&i===3, cab=ms.map((x,i)=>`<th class="r${parc(i)?' vil-cur':''}">${MES3[+x.slice(5)-1]}/${x.slice(2,4)}${parc(i)?' até agora':''}</th>`).join('');
-  const rowsF=D.fs.map(f=>`<tr><td><div class="cell-main">${esc(f.nome)}</div><div class="cell-sub">${esc(Object.keys(f.contas).join(' · '))}</div></td>${f.v.map((v,i)=>`<td class="r${parc(i)?' vil-cur':''}">${v?`${fmoney(v)}<div class="cell-sub">${parc(i)?'':brl(v/hm)+'/h · '}${pct(D.folha[i]?v/D.folha[i]:0)} da folha</div>`:'–'}</td>`).join('')}</tr>`).join('');
+function equipeSecao(){ const h=hoje().slice(0,7), INI=dadosIni(); let ref=F.eqRef||ymAdd(h,-1); if(ref<INI) ref=INI; const D=equipeDados(ref), ms=D.ms, hm=+((S.cfg.equipe||{}).horas)||180, ok=i=>ms[i]>=INI, IX=ms.map((_,i)=>i).filter(ok);
+  if(!D.fs.length && !D.enc.some(Boolean)) return `<div class="card"><div class="card-h"><h2>Equipe · custo por funcionário</h2></div><p class="note">Sem lançamentos no grupo Despesas com pessoal entre ${ymLbl(ms[0]<INI?INI:ms[0])} e ${ymLbl(ms[ms.length-1])}.</p></div>`;
+  const parc=i=>D.cur&&i===3, cab=IX.map(i=>{ const x=ms[i]; return `<th class="r${parc(i)?' vil-cur':''}">${MES3[+x.slice(5)-1]}/${x.slice(2,4)}${parc(i)?' até agora':''}</th>`; }).join('');
+  const rowsF=D.fs.map(f=>`<tr><td><div class="cell-main">${esc(f.nome)}</div><div class="cell-sub">${esc(Object.keys(f.contas).join(' · '))}</div></td>${IX.map(i=>{ const v=f.v[i]; return `<td class="r${parc(i)?' vil-cur':''}">${v?`${fmoney(v)}<div class="cell-sub">${parc(i)?'':brl(v/hm)+'/h · '}${pct(D.folha[i]?v/D.folha[i]:0)} da folha</div>`:'–'}</td>`; }).join('')}</tr>`).join('');
   const tot=D.folha.map((v,i)=>v+D.enc[i]);
-  const ind=(t,f,hint)=>`<tr><td>${t}${hint?`<div class="cell-sub">${hint}</div>`:''}</td>${ms.map((_,i)=>`<td class="r${parc(i)?' vil-cur':''}">${f(i)}</td>`).join('')}</tr>`;
+  const ind=(t,f,hint)=>`<tr><td>${t}${hint?`<div class="cell-sub">${hint}</div>`:''}</td>${IX.map(i=>`<td class="r${parc(i)?' vil-cur':''}">${f(i)}</td>`).join('')}</tr>`;
   const x=(a,b)=>b?fnum(a/b,2)+'×':'–';
   const indic=[
     ind('<b>Faturamento</b>',i=>D.rec[i]?brl(D.rec[i]):'–'),
@@ -946,9 +947,9 @@ function equipeSecao(){ const h=hoje().slice(0,7), ref=F.eqRef||ymAdd(h,-1), D=e
     ind('Faturamento ÷ custo com pessoal',i=>x(D.rec[i],tot[i]),'quantos reais entram para cada R$ 1 de pessoal'),
     ind('Custo da hora da equipe',i=>parc(i)?'<span class="cell-sub">mês aberto</span>':(tot[i]?brl(tot[i]/hm):'–'),'custo total com pessoal ÷ '+fnum(hm,0)+' h')
   ].join('');
-  const opts=[]; for(let i=1;i<=18;i++){ const y=ymAdd(h,-i+1); opts.push(`<option value="${y}"${y===ref?' selected':''}>${ymLbl(y)}${i===1?' (mês atual, parcial)':''}</option>`); }
-  const fech=[0,1,2].filter(i=>D.rec[i]||tot[i]);
-  const graf=fech.length>=2? graficoLinhas([{n:'Faturamento',v:[0,1,2].map(i=>Math.round(D.rec[i])),c:'var(--rd-rec)'},{n:'Custo com pessoal',v:[0,1,2].map(i=>Math.round(tot[i])),c:'var(--rd-desp)'}], ms.slice(0,3).map((y,i)=>ymLbl(y)+' · '+D.n[i]+' func.'), [0,1,2].map(i=>tot[i]&&D.rec[i]?tot[i]/D.rec[i]:null), [0,1,2].map(i=>!!(D.rec[i]||tot[i]))) :'';
+  const opts=[]; for(let i=1;i<=18;i++){ const y=ymAdd(h,-i+1); if(y<INI) break; opts.push(`<option value="${y}"${y===ref?' selected':''}>${ymLbl(y)}${i===1?' (mês atual, parcial)':''}</option>`); }
+  const G=[0,1,2].filter(ok), fech=G.filter(i=>D.rec[i]||tot[i]);
+  const graf=fech.length>=1? graficoLinhas([{n:'Faturamento',v:G.map(i=>Math.round(D.rec[i])),c:'var(--rd-rec)'},{n:'Custo com pessoal',v:G.map(i=>Math.round(tot[i])),c:'var(--rd-desp)'}], G.map(i=>ymLbl(ms[i])+' · '+D.n[i]+' func.'), G.map(i=>tot[i]&&D.rec[i]?tot[i]/D.rec[i]:null), G.map(i=>!!(D.rec[i]||tot[i]))) :'';
   return `<div class="card"><div class="card-h"><h2>Equipe · custo por funcionário e faturamento</h2>
       <div class="row" style="align-items:flex-end"><div class="f" style="min-width:110px"><label for="eqHoras">Horas/mês por funcionário</label><input id="eqHoras" class="n" inputmode="decimal" data-chg="eqHoras" value="${fnum(hm,0)}"></div>
       <div class="f" style="min-width:200px"><label for="eqRef">Mês de referência</label><select id="eqRef" data-chg="eqRef">${opts.join('')}</select></div></div></div>
@@ -958,7 +959,7 @@ function equipeSecao(){ const h=hoje().slice(0,7), ref=F.eqRef||ymAdd(h,-1), D=e
     ${graf?`<div style="margin-top:12px">${graf}<div class="legend"><span><i style="background:var(--rd-rec)"></i>Faturamento</span><span><i style="background:var(--rd-desp)"></i>Custo com pessoal</span><span>% = custo com pessoal sobre o faturamento</span></div></div>`:''}
     ${D.fs.length?`<h3 class="eq-h">Custo de cada funcionário <span class="hint">R$ no mês · custo por hora · participação na folha</span></h3>
     <div class="tscroll"><table class="t eq-t"><thead><tr><th>Funcionário</th>${cab}</tr></thead><tbody>${rowsF}</tbody>
-      <tfoot><tr><td>Folha dos funcionários</td>${D.folha.map((v,i)=>`<td class="r${parc(i)?' vil-cur':''}">${v?fmoney(v):'–'}</td>`).join('')}</tr></tfoot></table></div>`:''}
+      <tfoot><tr><td>Folha dos funcionários</td>${IX.map(i=>{ const v=D.folha[i]; return `<td class="r${parc(i)?' vil-cur':''}">${v?fmoney(v):'–'}</td>`; }).join('')}</tr></tfoot></table></div>`:''}
   </div>`; }
 CHG.eqRef=el=>{ F.eqRef=el.value; render(); };
 CHG.eqHoras=el=>{ const v=parseNum(el.value); if(!(v>0)){ toast('Informe as horas por mês.'); render(); return; } S.cfg.equipe=Object.assign({},S.cfg.equipe||{},{horas:v}); salvarDoc('geral'); render(); };
