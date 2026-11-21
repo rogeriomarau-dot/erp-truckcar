@@ -912,7 +912,7 @@ function viloesSecao(){ const h=hoje().slice(0,7), INI=dadosIni(); let ref=F.vil
 </div>`; };
   const opts=[]; for(let i=1;i<=18;i++){ const x=ymAdd(h,-i+1); if(x<ymAdd(INI,1)) break; opts.push(`<option value="${x}"${x===ref?' selected':''}>${ymLbl(x)}${i===1?' (mês atual, parcial)':''}</option>`); }
   const corpo=['F','V','C'].map(bloco).join('');
-  return `<div class="card"><div class="card-h"><h2>Vilões das despesas · ${ymLbl(ok(0)?ms[0]:ms[1])} a ${ymLbl(ms[2])}${D.cur?' + '+ymLbl(ms[3])+' parcial':''}</h2>
+  return `<div class="card"><div class="card-h"><h2>Variação das despesas · ${ymLbl(ok(0)?ms[0]:ms[1])} a ${ymLbl(ms[2])}${D.cur?' + '+ymLbl(ms[3])+' parcial':''}</h2>
       <div class="f" style="min-width:200px"><label for="vilRef">Mês de referência</label><select id="vilRef" data-chg="vilRef">${opts.join('')}</select></div></div>
     <p class="note" style="margin:0 0 10px">Contas que mais aumentaram de ${ymLbl(ms[1])} para ${ymLbl(ms[2])}, separadas em despesas fixas, despesas variáveis e custos variáveis, com os últimos meses lado a lado (desde ${ymLbl(INI)}). ${D.cur?` A última coluna acompanha o mês vigente em tempo real, com quanto cada conta já representa do mês de referência inteiro.`:''} Regime de competência, classificação do Plano de contas. Receita: ${ms.map((x,i)=>ok(i)?MES3[+x.slice(5)-1]+(i===3?' (até agora)':'')+' '+brl(D.rec[i]):'').filter(Boolean).join(' · ')}.</p>
     ${corpo||'<p class="note">Sem despesas lançadas nesses meses.</p>'}</div>`; }
