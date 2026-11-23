@@ -239,6 +239,7 @@ input.n{text-align:right}
 .vil-cur{background:#fff8e1}.vil-t th.vil-cur{color:#7a5a00}.vil-curtot{margin-top:4px;padding:3px 8px;border-radius:8px;background:#fff8e1;color:#4a3b10;font-size:12px}.vil-curtot b{font-family:var(--f-num);font-size:13px}
 .vil-alerta{margin:4px 0 8px;padding:8px 12px;border-radius:10px;background:#fff4d6;border:1px solid #f1d27a;font-size:13px;color:#4a3b10}
 .vil-t tr.vil-sep td{background:var(--surface-2);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700;padding-top:6px;padding-bottom:6px}.vil-t tr.vil-queda td{background:color-mix(in srgb,var(--pos) 5%,var(--surface))}.vil-t tfoot td{font-weight:700}
+.vil-t td.dr,.eq-t td.dr{cursor:pointer}.vil-t td.dr:hover,.eq-t td.dr:hover{text-decoration:underline;text-decoration-style:dotted;color:var(--accent)}
 .vil-t td small{font-size:11px;opacity:.85}.vil-t .pill{font-size:10px;padding:1px 6px;margin-left:4px}
 .oq2-opc{padding:8px 10px;border-radius:10px;border:1px dashed var(--line);opacity:.55}.oq2-opc.on{opacity:1;border:1.5px solid var(--accent);background:var(--accent-soft)}
 .oq2-g3{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:8px;align-items:end}.oq2-g3 label{font-size:11.5px}
@@ -822,11 +823,18 @@ const VIEWS={
   config:{t:'Configurações',r:vConfig}, usuarios:{t:'Usuários e permissões',r:vUsuarios}
 };
 let view='painel';
+/* Lembra onde cada tela estava (rolagem da página e das tabelas) para voltar no mesmo lugar */
+const POS=(()=>{ try{ return LS.get('posTelas')||{}; }catch(e){ return {}; } })();
+function posLer(){ return {y:window.scrollY, t:[...document.querySelectorAll('#view .tscroll')].map(e=>[e.scrollTop,e.scrollLeft])}; }
+function posAplicar(p){ if(!p) return; const go_=()=>{ document.querySelectorAll('#view .tscroll').forEach((e,i)=>{ const t=(p.t||[])[i]; if(t){ e.scrollTop=t[0]; e.scrollLeft=t[1]; } }); window.scrollTo({top:p.y||0}); }; go_(); requestAnimationFrame(go_); setTimeout(go_,120); }
+function posGuardar(){ if(typeof view==='undefined'||!view) return; POS[view]=posLer(); try{ LS.set('posTelas',POS); }catch(e){} }
+window.addEventListener('beforeunload',posGuardar);
 function go(v){
+  posGuardar();
   if(v==='notas') v='pagar'; if(v==='rel_categoria'||v==='rel_fornecedor'||v==='rel_itens') v='rel_pagar';
   if(!VIEWS[v]) v='painel'; if(USR && !podeVer(v)){ const p=primeiraView(); if(!p){ toast('Seu usuário não tem acesso a nenhum módulo.'); return; } v=p; } view=v; aplicarPermsUI();
   document.querySelectorAll('.nav button').forEach(b=>b.setAttribute('aria-current', b.dataset.go===v?'page':'false'));
-  $('#title').textContent=VIEWS[v].t; fecharMenu(); render(); window.scrollTo({top:0});
+  $('#title').textContent=VIEWS[v].t; fecharMenu(); render(); if(POS[v]) posAplicar(POS[v]); else window.scrollTo({top:0});
   try{ history.replaceState(null,'','#'+v); }catch(e){}
 }
 function render(){ $('#view').innerHTML=VIEWS[view].r(); if(typeof marcarIndeterminados==='function') marcarIndeterminados(); }
@@ -888,17 +896,21 @@ function viloesDados(ref){ const T=tratPE(), cur=hoje().slice(0,7), ms=[ymAdd(re
     if(!v.some(Boolean)) return; cats[cat].ls[c.id]={id:c.id, nome:c.nome, grupo:g.nome, v}; })));
   Object.values(cats).forEach(o=>{ o.ls=Object.values(o.ls); o.tot=ms.map((_,i)=>o.ls.reduce((a,x)=>a+x.v[i],0)); });
   return {ms, rec, cats, cur:ms.length>3}; }
-function viloesSecao(){ const h=hoje().slice(0,7), INI=dadosIni(); let ref=F.vilRef||ymAdd(h,-1); if(ref<ymAdd(INI,1)) ref=ymAdd(INI,1); const D=viloesDados(ref), ms=D.ms, ok=i=>ms[i]>=INI;
+let VIL_CACHE=null;
+ACT.vilDet=el=>{ if(!VIL_CACHE) return; const ym=el.dataset.ym, ano=+ym.slice(0,4), m=+ym.slice(5,7)-1; let ids, nome;
+  if(el.dataset.k){ const o=VIL_CACHE.cats[el.dataset.k]; ids=o.ls.map(x=>x.id); nome=o.nome; } else { const x=Object.values(VIL_CACHE.cats).flatMap(o=>o.ls).find(x=>x.id===el.dataset.id); if(!x) return; ids=[x.id]; nome=x.grupo+' › '+x.nome; }
+  abrirDetalhe(nome, itensDRE({contas:ids}, ano, m, m, 'comp'), `Variação das despesas · ${MESES[m]}/${ano} · por competência`); };
+function viloesSecao(){ const h=hoje().slice(0,7), INI=dadosIni(); let ref=F.vilRef||ymAdd(h,-1); if(ref<ymAdd(INI,1)) ref=ymAdd(INI,1); const D=viloesDados(ref), ms=D.ms, ok=i=>ms[i]>=INI; VIL_CACHE=D;
   const vp=(a,b)=>b? (a-b)/Math.abs(b) : (a?1:0);
   const varTxt=(a,b)=>{ const d=a-b; if(!d) return '<span class="cell-sub">=</span>'; return `<span class="${d>0?'neg-t':'pos-t'}">${d>0?'▲ +':'▼ −'}${fmoney(Math.abs(d))}${b?` <small>(${d>0?'+':'−'}${pct(Math.abs(d/b))})</small>`:' <small>(novo)</small>'}</span>`; };
-  const curCel=(a,b)=>`<td class="r vil-cur">${a?fmoney(a):'–'}${b>0&&a?`<div class="cell-sub ${a>=b?'neg-t':''}">${pct(a/b)} de ${MES3[+ms[2].slice(5)-1]}</div>`:''}</td>`;
+  const curCel=(a,b,id)=>`<td class="r vil-cur${a&&id?' dr':''}"${a&&id?` data-act="vilDet" data-id="${id}" data-ym="${ms[3]}" title="Ver os lançamentos"`:''}>${a?fmoney(a):'–'}${b>0&&a?`<div class="cell-sub ${a>=b?'neg-t':''}">${pct(a/b)} de ${MES3[+ms[2].slice(5)-1]}</div>`:''}</td>`;
   const bloco=(key)=>{ const o=D.cats[key]; if(!o.ls.length) return '';
     const subiu=o.ls.filter(x=>x.v[2]-x.v[1]>0.005).sort((a,b)=>(b.v[2]-b.v[1])-(a.v[2]-a.v[1])), caiu=o.ls.filter(x=>x.v[1]-x.v[2]>0.005).sort((a,b)=>(b.v[1]-b.v[2])-(a.v[1]-a.v[2]));
     const todosL=o.ls.slice().sort((a,b)=>(b.v[2]-b.v[1])-(a.v[2]-a.v[1])||b.v[2]-a.v[2]), todos=F.vilTodos[key], ver=todos?todosL:subiu.slice(0,5), dT=o.tot[2]-o.tot[1], aumento=subiu.reduce((a,x)=>a+x.v[2]-x.v[1],0);
     const linha=(x,i,cls)=>{ const seq=ok(0)&&x.v[0]<x.v[1]&&x.v[1]<x.v[2]; return `<tr${cls?` class="${cls}"`:''}><td class="num">${i}</td><td><div class="cell-main">${esc(x.nome)}${seq?' <span class="pill vencido" title="Subiu nos dois meses seguidos">sobe 2 meses</span>':''}</div><div class="cell-sub">${esc(x.grupo)}</div></td>
-      ${x.v.slice(0,3).map((v,j)=>ok(j)?`<td class="r">${v?fmoney(v):'–'}</td>`:'').join('')}<td class="r">${varTxt(x.v[2],x.v[1])}</td><td class="r">${aumento>0&&x.v[2]>x.v[1]?pct((x.v[2]-x.v[1])/aumento):''}</td>${D.cur?curCel(x.v[3],x.v[2]):''}</tr>`; };
+      ${x.v.slice(0,3).map((v,j)=>ok(j)?(v?`<td class="r dr" data-act="vilDet" data-id="${x.id}" data-ym="${ms[j]}" title="Ver os lançamentos">${fmoney(v)}</td>`:'<td class="r">–</td>'):'').join('')}<td class="r">${varTxt(x.v[2],x.v[1])}</td><td class="r">${aumento>0&&x.v[2]>x.v[1]?pct((x.v[2]-x.v[1])/aumento):''}</td>${D.cur?curCel(x.v[3],x.v[2],x.id):''}</tr>`; };
     const rows=ver.map((x,i)=>linha(x,(i+1)+'º')).join('')+(!todos&&caiu.length?`<tr class="vil-sep"><td colspan="${4+[0,1,2].filter(ok).length+(D.cur?1:0)}">Maiores quedas</td></tr>`+caiu.slice(0,3).map(x=>linha(x,'▼','vil-queda')).join(''):'');
-    const nc=[0,1,2].filter(ok), totRow=`<tfoot><tr><td></td><td>Total ${o.nome.toLowerCase()}</td>${nc.map(j=>`<td class="r">${fmoney(o.tot[j])}</td>`).join('')}<td class="r">${varTxt(o.tot[2],o.tot[1])}</td><td></td>${D.cur?`<td class="r vil-cur">${fmoney(o.tot[3])}</td>`:''}</tr></tfoot>`;
+    const nc=[0,1,2].filter(ok), totRow=`<tfoot><tr><td></td><td>Total ${o.nome.toLowerCase()}</td>${nc.map(j=>`<td class="r dr" data-act="vilDet" data-k="${key}" data-ym="${ms[j]}" title="Ver os lançamentos">${fmoney(o.tot[j])}</td>`).join('')}<td class="r">${varTxt(o.tot[2],o.tot[1])}</td><td></td>${D.cur?`<td class="r vil-cur dr" data-act="vilDet" data-k="${key}" data-ym="${ms[3]}" title="Ver os lançamentos">${fmoney(o.tot[3])}</td>`:''}</tr></tfoot>`;
     return `<div class="vil-blk vil-${o.cls}"><div class="vil-h"><h3>${o.nome}</h3>
         <div class="vil-tot"><span>${MES3[+ms[1].slice(5)-1]} ${brl(o.tot[1])} → ${MES3[+ms[2].slice(5)-1]} ${brl(o.tot[2])}</span><b class="${dT>0?'neg-t':dT<0?'pos-t':''}">${dT>0?'▲ +':dT<0?'▼ −':''}${brl(Math.abs(dT))}${o.tot[1]?' ('+(dT>0?'+':dT<0?'−':'')+pct(Math.abs(vp(o.tot[2],o.tot[1])))+')':''}</b>
         ${D.rec[2]?`<small>${pct(o.tot[1]&&D.rec[1]?o.tot[1]/D.rec[1]:0)} → ${pct(o.tot[2]/D.rec[2])} da receita</small>`:''}
@@ -923,28 +935,37 @@ ACT.vilTodos=el=>{ F.vilTodos[el.dataset.k]=!F.vilTodos[el.dataset.k]; render();
 F.eqRef=null;
 const EQ_FUNC=/SALARI|ADIANT|HORA|EXTRA|RESCIS|FERIAS|FÉRIAS|13|DECIMO|BONIF|COMISS|GRATIF|PREMIO/;
 function equipeDados(ref){ const cur=hoje().slice(0,7), ms=[ymAdd(ref,-2),ymAdd(ref,-1),ref].concat(ref<cur?[cur]:[]), mi=Object.fromEntries(ms.map((x,i)=>[x,i]));
-  const IX=IDX(), func={}, enc=ms.map(()=>0), encContas={}, VC={}, Vy=y=>VC[y]||(VC[y]=valoresPorConta(y,'comp'));
+  const IX=IDX(), func={}, enc=ms.map(()=>0), encIts=ms.map(()=>[]), encContas={}, VC={}, Vy=y=>VC[y]||(VC[y]=valoresPorConta(y,'comp'));
   ativos().forEach(l=>{ if(l.tipo!=='P') return; const i=mi[(l.competencia||'').slice(0,7)]; if(i===undefined) return;
     partes(l).forEach(p=>{ const x=IX[p.contaId]; if(!x||!x.g||!/PESSOAL/.test(norm(x.g.nome))) return; const v=+p.valor||0; if(!v) return;
-      if(EQ_FUNC.test(norm(x.c.nome))){ const nome=(nomePessoa(l)||'Sem nome').trim(), k=l.pessoaId||norm(nome); const f=func[k]=func[k]||{nome, v:ms.map(()=>0), contas:{}}; f.v[i]+=v; f.contas[x.c.nome]=(f.contas[x.c.nome]||0)+v; }
-      else { enc[i]+=v; encContas[x.c.nome]=(encContas[x.c.nome]||0)+v; } }); });
+      const it={l, valor:v, contaId:p.contaId, data:l.competencia};
+      if(EQ_FUNC.test(norm(x.c.nome))){ const nome=(nomePessoa(l)||'Sem nome').trim(), k=l.pessoaId||norm(nome); const f=func[k]=func[k]||{k, nome, v:ms.map(()=>0), contas:{}, its:ms.map(()=>[])}; f.v[i]+=v; f.its[i].push(it); f.contas[x.c.nome]=(f.contas[x.c.nome]||0)+v; }
+      else { enc[i]+=v; encIts[i].push(it); encContas[x.c.nome]=(encContas[x.c.nome]||0)+v; } }); });
   const rec=ms.map(x=>{ const V=Vy(+x.slice(0,4)), m=+x.slice(5,7)-1; let r=0; gruposDe('receita').forEach(g=>g.contas.forEach(c=>r+=(V[c.id]||[])[m]||0)); return r; });
   const fs=Object.values(func).sort((a,b)=>b.v.reduce((s,v)=>s+v,0)-a.v.reduce((s,v)=>s+v,0));
   const folha=ms.map((_,i)=>fs.reduce((a,f)=>a+f.v[i],0)), n=ms.map((_,i)=>fs.filter(f=>f.v[i]>0).length);
-  return {ms, cur:ms.length>3, fs, folha, enc, encContas, n, rec}; }
-function equipeSecao(){ const h=hoje().slice(0,7), INI=dadosIni(); let ref=F.eqRef||ymAdd(h,-1); if(ref<INI) ref=INI; const D=equipeDados(ref), ms=D.ms, hm=+((S.cfg.equipe||{}).horas)||180, ok=i=>ms[i]>=INI, IX=ms.map((_,i)=>i).filter(ok);
+  return {ms, cur:ms.length>3, fs, folha, enc, encIts, encContas, n, rec}; }
+let EQ_CACHE=null;
+ACT.eqDet=el=>{ if(!EQ_CACHE) return; const D=EQ_CACHE, i=+el.dataset.i, ym=D.ms[i], ano=+ym.slice(0,4), m=+ym.slice(5,7)-1, sub=`Equipe · ${MESES[m]}/${ano} · por competência`;
+  if(el.dataset.f){ const f=D.fs.find(x=>x.k===el.dataset.f); if(f) abrirDetalhe(f.nome, f.its[i], sub); return; }
+  const t=el.dataset.t, folha=D.fs.flatMap(f=>f.its[i]);
+  if(t==='rec') abrirDetalhe('Faturamento', itensDRE({secoes:['receita']}, ano, m, m, 'comp'), sub);
+  else if(t==='folha') abrirDetalhe('Folha dos funcionários', folha, sub);
+  else if(t==='enc') abrirDetalhe('Encargos e benefícios', D.encIts[i], sub);
+  else abrirDetalhe('Custo total com pessoal', folha.concat(D.encIts[i]), sub); };
+function equipeSecao(){ const h=hoje().slice(0,7), INI=dadosIni(); let ref=F.eqRef||ymAdd(h,-1); if(ref<INI) ref=INI; const D=equipeDados(ref); EQ_CACHE=D; const ms=D.ms, hm=+((S.cfg.equipe||{}).horas)||180, ok=i=>ms[i]>=INI, IX=ms.map((_,i)=>i).filter(ok);
   if(!D.fs.length && !D.enc.some(Boolean)) return `<div class="card"><div class="card-h"><h2>Equipe · custo por funcionário</h2></div><p class="note">Sem lançamentos no grupo Despesas com pessoal entre ${ymLbl(ms[0]<INI?INI:ms[0])} e ${ymLbl(ms[ms.length-1])}.</p></div>`;
   const parc=i=>D.cur&&i===3, cab=IX.map(i=>{ const x=ms[i]; return `<th class="r${parc(i)?' vil-cur':''}">${MES3[+x.slice(5)-1]}/${x.slice(2,4)}${parc(i)?' até agora':''}</th>`; }).join('');
-  const rowsF=D.fs.map(f=>`<tr><td><div class="cell-main">${esc(f.nome)}</div><div class="cell-sub">${esc(Object.keys(f.contas).join(' · '))}</div></td>${IX.map(i=>{ const v=f.v[i]; return `<td class="r${parc(i)?' vil-cur':''}">${v?`${fmoney(v)}<div class="cell-sub">${parc(i)?'':brl(v/hm)+'/h · '}${pct(D.folha[i]?v/D.folha[i]:0)} da folha</div>`:'–'}</td>`; }).join('')}</tr>`).join('');
+  const rowsF=D.fs.map(f=>`<tr><td><div class="cell-main">${esc(f.nome)}</div><div class="cell-sub">${esc(Object.keys(f.contas).join(' · '))}</div></td>${IX.map(i=>{ const v=f.v[i]; return `<td class="r${parc(i)?' vil-cur':''}${v?' dr':''}"${v?` data-act="eqDet" data-f="${esc(f.k)}" data-i="${i}" title="Ver os lançamentos"`:''}>${v?`${fmoney(v)}<div class="cell-sub">${parc(i)?'':brl(v/hm)+'/h · '}${pct(D.folha[i]?v/D.folha[i]:0)} da folha</div>`:'–'}</td>`; }).join('')}</tr>`).join('');
   const tot=D.folha.map((v,i)=>v+D.enc[i]);
-  const ind=(t,f,hint)=>`<tr><td>${t}${hint?`<div class="cell-sub">${hint}</div>`:''}</td>${IX.map(i=>`<td class="r${parc(i)?' vil-cur':''}">${f(i)}</td>`).join('')}</tr>`;
+  const ind=(t,f,hint,dk)=>`<tr><td>${t}${hint?`<div class="cell-sub">${hint}</div>`:''}</td>${IX.map(i=>`<td class="r${parc(i)?' vil-cur':''}${dk?' dr':''}"${dk?` data-act="eqDet" data-t="${dk}" data-i="${i}" title="Ver os lançamentos"`:''}>${f(i)}</td>`).join('')}</tr>`;
   const x=(a,b)=>b?fnum(a/b,2)+'×':'–';
   const indic=[
-    ind('<b>Faturamento</b>',i=>D.rec[i]?brl(D.rec[i]):'–'),
+    ind('<b>Faturamento</b>',i=>D.rec[i]?brl(D.rec[i]):'–','','rec'),
     ind('Nº de funcionários',i=>D.n[i]||'–','com salário, adiantamento, horas extras ou rescisão no mês'),
-    ind('Folha dos funcionários',i=>D.folha[i]?brl(D.folha[i]):'–','salários, adiantamentos, horas extras, rescisões…'),
-    ind('Encargos e benefícios',i=>D.enc[i]?brl(D.enc[i]):'–', Object.keys(D.encContas).slice(0,4).join(', ')||'INSS, FGTS, vale-transporte…'),
-    ind('<b>Custo total com pessoal</b>',i=>tot[i]?'<b>'+brl(tot[i])+'</b>':'–'),
+    ind('Folha dos funcionários',i=>D.folha[i]?brl(D.folha[i]):'–','salários, adiantamentos, horas extras, rescisões…','folha'),
+    ind('Encargos e benefícios',i=>D.enc[i]?brl(D.enc[i]):'–', Object.keys(D.encContas).slice(0,4).join(', ')||'INSS, FGTS, vale-transporte…','enc'),
+    ind('<b>Custo total com pessoal</b>',i=>tot[i]?'<b>'+brl(tot[i])+'</b>':'–','','tot'),
     ind('Custo com pessoal % do faturamento',i=>D.rec[i]&&tot[i]?`<span class="${tot[i]/D.rec[i]>0.4?'neg-t':''}">${pct(tot[i]/D.rec[i])}</span>`:'–'),
     ind('<b>Faturamento por funcionário</b>',i=>D.n[i]&&D.rec[i]?'<b>'+brl(D.rec[i]/D.n[i])+'</b>':'–'),
     ind('Custo médio por funcionário',i=>D.n[i]?brl(tot[i]/D.n[i]):'–'),
@@ -963,7 +984,7 @@ function equipeSecao(){ const h=hoje().slice(0,7), INI=dadosIni(); let ref=F.eqR
     ${graf?`<div style="margin-top:12px">${graf}<div class="legend"><span><i style="background:var(--rd-rec)"></i>Faturamento</span><span><i style="background:var(--rd-desp)"></i>Custo com pessoal</span><span>% = custo com pessoal sobre o faturamento</span></div></div>`:''}
     ${D.fs.length?`<h3 class="eq-h">Custo de cada funcionário <span class="hint">R$ no mês · custo por hora · participação na folha</span></h3>
     <div class="tscroll"><table class="t eq-t"><thead><tr><th>Funcionário</th>${cab}</tr></thead><tbody>${rowsF}</tbody>
-      <tfoot><tr><td>Folha dos funcionários</td>${IX.map(i=>{ const v=D.folha[i]; return `<td class="r${parc(i)?' vil-cur':''}">${v?fmoney(v):'–'}</td>`; }).join('')}</tr></tfoot></table></div>`:''}
+      <tfoot><tr><td>Folha dos funcionários</td>${IX.map(i=>{ const v=D.folha[i]; return `<td class="r${parc(i)?' vil-cur':''}${v?' dr':''}"${v?` data-act="eqDet" data-t="folha" data-i="${i}" title="Ver os lançamentos"`:''}>${v?fmoney(v):'–'}</td>`; }).join('')}</tr></tfoot></table></div>`:''}
   </div>`; }
 CHG.eqRef=el=>{ F.eqRef=el.value; render(); };
 CHG.eqHoras=el=>{ const v=parseNum(el.value); if(!(v>0)){ toast('Informe as horas por mês.'); render(); return; } S.cfg.equipe=Object.assign({},S.cfg.equipe||{},{horas:v}); salvarDoc('geral'); render(); };
@@ -4052,7 +4073,7 @@ function tetoModal(){ const ym=F.tetoMes, R=tetoResumo(ym), [y,m]=ym.split('-').
     salvar:()=>{ const v=parseNum(mv('tVal')); if(!(v>=0)){ toast('Informe o valor do teto.'); return; } S.cfg.teto=Object.assign({},S.cfg.teto||{},{valor:v}); salvarDoc('geral'); toast('Teto mensal: '+brl(v)); fecharModal(); tetoModal(); } }, false);
   $('#sheet').classList.add('lg'); }
 $('#btnTeto').addEventListener('click',()=>{ F.tetoMes=hoje().slice(0,7); tetoModal(); });
-{ const _rT=render; render=function(){ _rT(); atualizarTeto(); }; }
+{ let _vw=null; const _rT=render; render=function(){ const mesma=_vw===view, p=mesma?[...document.querySelectorAll('#view .tscroll')].map(e=>[e.scrollTop,e.scrollLeft]):[]; _rT(); atualizarTeto(); _vw=view; if(mesma) document.querySelectorAll('#view .tscroll').forEach((e,i)=>{ const t=p[i]; if(t){ e.scrollTop=t[0]; e.scrollLeft=t[1]; } }); }; }
 
 window.ERPTruckcar={S, dreLinhas, SECOES, go, get usr(){ return USR; }};
 })();
