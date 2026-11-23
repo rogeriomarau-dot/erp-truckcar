@@ -970,7 +970,8 @@ function equipeSecao(){ const h=hoje().slice(0,7), INI=dadosIni(); let ref=F.eqR
     ind('<b>Faturamento por funcionário</b>',i=>D.n[i]&&D.rec[i]?'<b>'+brl(D.rec[i]/D.n[i])+'</b>':'–'),
     ind('Custo médio por funcionário',i=>D.n[i]?brl(tot[i]/D.n[i]):'–'),
     ind('Faturamento ÷ custo com pessoal',i=>x(D.rec[i],tot[i]),'quantos reais entram para cada R$ 1 de pessoal'),
-    ind('Custo da hora da equipe',i=>parc(i)?'<span class="cell-sub">mês aberto</span>':(tot[i]?brl(tot[i]/hm):'–'),'custo total com pessoal ÷ '+fnum(hm,0)+' h')
+    ind('Custo da hora da equipe',i=>parc(i)?'<span class="cell-sub">mês aberto</span>':(tot[i]?brl(tot[i]/hm):'–'),'custo total com pessoal ÷ '+fnum(hm,0)+' h'),
+    ind('Custo da hora por funcionário',i=>parc(i)?'<span class="cell-sub">mês aberto</span>':(tot[i]&&D.n[i]?brl(tot[i]/D.n[i]/hm):'–'),'custo total com pessoal ÷ nº de funcionários ÷ '+fnum(hm,0)+' h')
   ].join('');
   const opts=[]; for(let i=1;i<=18;i++){ const y=ymAdd(h,-i+1); if(y<INI) break; opts.push(`<option value="${y}"${y===ref?' selected':''}>${ymLbl(y)}${i===1?' (mês atual, parcial)':''}</option>`); }
   const G=[0,1,2].filter(ok), fech=G.filter(i=>D.rec[i]||tot[i]);
