@@ -239,6 +239,7 @@ input.n{text-align:right}
 .vil-cur{background:#fff8e1}.vil-t th.vil-cur{color:#7a5a00}.vil-curtot{margin-top:4px;padding:3px 8px;border-radius:8px;background:#fff8e1;color:#4a3b10;font-size:12px}.vil-curtot b{font-family:var(--f-num);font-size:13px}
 .vil-alerta{margin:4px 0 8px;padding:8px 12px;border-radius:10px;background:#fff4d6;border:1px solid #f1d27a;font-size:13px;color:#4a3b10}
 .vil-t tr.vil-sep td{background:var(--surface-2);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700;padding-top:6px;padding-bottom:6px}.vil-t tr.vil-queda td{background:color-mix(in srgb,var(--pos) 5%,var(--surface))}.vil-t tfoot td{font-weight:700}
+.det-res{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px}.det-res div{display:flex;flex-direction:column;gap:2px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);min-width:150px}.det-res span{font-size:12px;color:var(--muted)}.det-res b{font-family:var(--f-num);font-size:15px}
 .vil-t td.dr,.eq-t td.dr{cursor:pointer}.vil-t td.dr:hover,.eq-t td.dr:hover{text-decoration:underline;text-decoration-style:dotted;color:var(--accent)}
 .vil-t td small{font-size:11px;opacity:.85}.vil-t .pill{font-size:10px;padding:1px 6px;margin-left:4px}
 .oq2-opc{padding:8px 10px;border-radius:10px;border:1px dashed var(--line);opacity:.55}.oq2-opc.on{opacity:1;border:1.5px solid var(--accent);background:var(--accent-soft)}
@@ -894,11 +895,15 @@ function viloesDados(ref){ const T=tratPE(), cur=hoje().slice(0,7), ms=[ymAdd(re
   ORDEM.filter(sc=>SECOES[sc].nat==='P' && sc!=='distrib' && sc!=='prov').forEach(sc=>gruposDe(sc).forEach(g=>g.contas.forEach(c=>{ const k=classeDe(c,g); if(!k) return;
     const cat=T[k]==='F'?'F':(k==='custovar'?'C':'V'); const v=ms.map(x=>{ const V=Vy(+x.slice(0,4)); return Math.round(((V[c.id]||[])[+x.slice(5,7)-1]||0)*100)/100; });
     if(!v.some(Boolean)) return; cats[cat].ls[c.id]={id:c.id, nome:c.nome, grupo:g.nome, v}; })));
-  Object.values(cats).forEach(o=>{ o.ls=Object.values(o.ls); o.tot=ms.map((_,i)=>o.ls.reduce((a,x)=>a+x.v[i],0)); });
+  Object.values(cats).forEach(o=>{ o.ls=Object.values(o.ls);
+    const ehSal=x=>/^SALARIOS?$/.test(norm(x.nome).trim()), ehAdi=x=>/ADIANTAMENTO/.test(norm(x.nome))&&/SALARIO/.test(norm(x.nome));
+    const jun=o.ls.filter(x=>ehSal(x)||ehAdi(x));
+    if(jun.length>1){ o.ls=o.ls.filter(x=>!jun.includes(x)); o.ls.push({id:'salAdi', ids:jun.map(x=>x.id), nome:'Salários + adiantamentos', grupo:jun[0].grupo, partes:jun.map(x=>x.nome), v:ms.map((_,i)=>Math.round(jun.reduce((a,x)=>a+x.v[i],0)*100)/100)}); }
+    o.tot=ms.map((_,i)=>o.ls.reduce((a,x)=>a+x.v[i],0)); });
   return {ms, rec, cats, cur:ms.length>3}; }
 let VIL_CACHE=null;
 ACT.vilDet=el=>{ if(!VIL_CACHE) return; const ym=el.dataset.ym, ano=+ym.slice(0,4), m=+ym.slice(5,7)-1; let ids, nome;
-  if(el.dataset.k){ const o=VIL_CACHE.cats[el.dataset.k]; ids=o.ls.map(x=>x.id); nome=o.nome; } else { const x=Object.values(VIL_CACHE.cats).flatMap(o=>o.ls).find(x=>x.id===el.dataset.id); if(!x) return; ids=[x.id]; nome=x.grupo+' › '+x.nome; }
+  if(el.dataset.k){ const o=VIL_CACHE.cats[el.dataset.k]; ids=o.ls.map(x=>x.id); nome=o.nome; } else { const x=Object.values(VIL_CACHE.cats).flatMap(o=>o.ls).find(x=>x.id===el.dataset.id); if(!x) return; ids=x.ids||[x.id]; nome=x.grupo+' › '+x.nome; }
   abrirDetalhe(nome, itensDRE({contas:ids}, ano, m, m, 'comp'), `Variação das despesas · ${MESES[m]}/${ano} · por competência`); };
 function viloesSecao(){ const h=hoje().slice(0,7), INI=dadosIni(); let ref=F.vilRef||ymAdd(h,-1); if(ref<ymAdd(INI,1)) ref=ymAdd(INI,1); const D=viloesDados(ref), ms=D.ms, ok=i=>ms[i]>=INI; VIL_CACHE=D;
   const vp=(a,b)=>b? (a-b)/Math.abs(b) : (a?1:0);
@@ -907,7 +912,7 @@ function viloesSecao(){ const h=hoje().slice(0,7), INI=dadosIni(); let ref=F.vil
   const bloco=(key)=>{ const o=D.cats[key]; if(!o.ls.length) return '';
     const subiu=o.ls.filter(x=>x.v[2]-x.v[1]>0.005).sort((a,b)=>(b.v[2]-b.v[1])-(a.v[2]-a.v[1])), caiu=o.ls.filter(x=>x.v[1]-x.v[2]>0.005).sort((a,b)=>(b.v[1]-b.v[2])-(a.v[1]-a.v[2]));
     const todosL=o.ls.slice().sort((a,b)=>(b.v[2]-b.v[1])-(a.v[2]-a.v[1])||b.v[2]-a.v[2]), todos=F.vilTodos[key], ver=todos?todosL:subiu.slice(0,5), dT=o.tot[2]-o.tot[1], aumento=subiu.reduce((a,x)=>a+x.v[2]-x.v[1],0);
-    const linha=(x,i,cls)=>{ const seq=ok(0)&&x.v[0]<x.v[1]&&x.v[1]<x.v[2]; return `<tr${cls?` class="${cls}"`:''}><td class="num">${i}</td><td><div class="cell-main">${esc(x.nome)}${seq?' <span class="pill vencido" title="Subiu nos dois meses seguidos">sobe 2 meses</span>':''}</div><div class="cell-sub">${esc(x.grupo)}</div></td>
+    const linha=(x,i,cls)=>{ const seq=ok(0)&&x.v[0]<x.v[1]&&x.v[1]<x.v[2]; return `<tr${cls?` class="${cls}"`:''}><td class="num">${i}</td><td><div class="cell-main">${esc(x.nome)}${seq?' <span class="pill vencido" title="Subiu nos dois meses seguidos">sobe 2 meses</span>':''}</div><div class="cell-sub">${esc(x.grupo)}${x.partes?' · '+esc(x.partes.join(' + ')):''}</div></td>
       ${x.v.slice(0,3).map((v,j)=>ok(j)?(v?`<td class="r dr" data-act="vilDet" data-id="${x.id}" data-ym="${ms[j]}" title="Ver os lançamentos">${fmoney(v)}</td>`:'<td class="r">–</td>'):'').join('')}<td class="r">${varTxt(x.v[2],x.v[1])}</td><td class="r">${aumento>0&&x.v[2]>x.v[1]?pct((x.v[2]-x.v[1])/aumento):''}</td>${D.cur?curCel(x.v[3],x.v[2],x.id):''}</tr>`; };
     const rows=ver.map((x,i)=>linha(x,(i+1)+'º')).join('')+(!todos&&caiu.length?`<tr class="vil-sep"><td colspan="${4+[0,1,2].filter(ok).length+(D.cur?1:0)}">Maiores quedas</td></tr>`+caiu.slice(0,3).map(x=>linha(x,'▼','vil-queda')).join(''):'');
     const nc=[0,1,2].filter(ok), totRow=`<tfoot><tr><td></td><td>Total ${o.nome.toLowerCase()}</td>${nc.map(j=>`<td class="r dr" data-act="vilDet" data-k="${key}" data-ym="${ms[j]}" title="Ver os lançamentos">${fmoney(o.tot[j])}</td>`).join('')}<td class="r">${varTxt(o.tot[2],o.tot[1])}</td><td></td>${D.cur?`<td class="r vil-cur dr" data-act="vilDet" data-k="${key}" data-ym="${ms[3]}" title="Ver os lançamentos">${fmoney(o.tot[3])}</td>`:''}</tr></tfoot>`;
@@ -1529,7 +1534,9 @@ CHG.perIdx=el=>{ const P=F[el.dataset.key]; P[P.tipo]=+el.value; render(); };
 function abrirDetalhe(titulo, itens, sub){
   itens.sort((a,b)=>(a.data||'').localeCompare(b.data||'') || nomePessoa(a.l).localeCompare(nomePessoa(b.l)));
   const tR=itens.filter(x=>x.l.tipo==='R').reduce((a,x)=>a+x.valor,0), tP=itens.filter(x=>x.l.tipo==='P').reduce((a,x)=>a+x.valor,0);
-  const corpo = itens.length? `<p class="note">${sub||''}</p><div class="tscroll"><table class="t"><thead><tr><th>Data</th><th>Tipo</th><th>Fornecedor / cliente</th><th>Categoria</th><th>Situação</th><th class="r">Valor</th></tr></thead><tbody>
+  const porConta={}; itens.forEach(x=>{ const k=x.contaId||''; porConta[k]=(porConta[k]||0)+(x.l.tipo==='P'?x.valor:-x.valor); }); const pcK=Object.keys(porConta);
+  const resumoC= pcK.length>1&&pcK.length<=8? `<div class="det-res">${pcK.sort((a,b)=>Math.abs(porConta[b])-Math.abs(porConta[a])).map(k=>`<div><span>${esc(nomeConta(k)||'Sem categoria')}</span><b>${brl(Math.abs(porConta[k]))}</b></div>`).join('')}</div>`:'';
+  const corpo = itens.length? `<p class="note">${sub||''}</p>${resumoC}<div class="tscroll"><table class="t"><thead><tr><th>Data</th><th>Tipo</th><th>Fornecedor / cliente</th><th>Categoria</th><th>Situação</th><th class="r">Valor</th></tr></thead><tbody>
     ${itens.map(x=>{ const l=x.l, s=stL(l); return `<tr class="click" data-m="abrir" data-id="${l.id}"><td class="num">${dataBR(x.data)}</td><td>${l.tipo==='P'?'A pagar':'A receber'}</td>
       <td><div class="cell-main">${esc(nomePessoa(l)||'—')}</div><div class="cell-sub">${esc(l.descricao||'')}${l.documento?' · '+esc(l.documento):''}</div></td>
       <td class="cell-sub">${esc(nomeConta(x.contaId))}${l.rateio&&l.rateio.length>1?`<div>parte de ${brl(l.valor)}</div>`:''}</td>
