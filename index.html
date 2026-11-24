@@ -1452,13 +1452,14 @@ ACT.baixaBloco=el=>{ const t=el.dataset.t; formBaixaBloco(t, null, hoje()); };
 function formBaixaBloco(t, ids, dia){
   const P=t==='P', porDia=!ids;
   const titulos=()=> porDia
-    ? S.lancamentos.filter(l=>l.tipo===t && abertoL(l) && (F.bbVenc? l.vencimento<=dia : l.vencimento===dia)).sort((a,b)=>a.vencimento.localeCompare(b.vencimento)||String(nomePessoa(a)).localeCompare(String(nomePessoa(b))))
+    ? S.lancamentos.filter(l=>l.tipo===t && abertoL(l) && (F.bbVenc? l.vencimento<=ate : (l.vencimento>=dia && l.vencimento<=ate))).sort((a,b)=>a.vencimento.localeCompare(b.vencimento)||String(nomePessoa(a)).localeCompare(String(nomePessoa(b))))
     : ids.map(id=>S.lancamentos.find(x=>x.id===id)).filter(abertoL).sort((a,b)=>a.vencimento.localeCompare(b.vencimento));
+  let ate=dia; const fimMes=d=>{ const [y,m]=d.split('-').map(Number); return d.slice(0,8)+String(new Date(y,m,0).getDate()).padStart(2,'0'); };
   let ls=titulos(); const marc=new Set(ls.map(l=>l.id)), val={}, fo={}, bc={};
   let pf='', pb=S.bancos.itens[0]?S.bancos.itens[0].id:'';
   const formaDe=l=>fo[l.id]!==undefined?fo[l.id]:(pf||l.forma||''), bancoDe=l=>bc[l.id]!==undefined?bc[l.id]:pb;
   const difer=l=>fo[l.id]!==undefined||bc[l.id]!==undefined;
-  const lista=()=>{ if(!ls.length) return `<div class="warnbox" style="margin:8px 0">${porDia?`Nenhum título em aberto com vencimento ${F.bbVenc?'até':'em'} ${dataBR(dia)}. Escolha outra data${F.bbVenc?'':' ou marque "Incluir também os vencidos"'}.`:'Nenhum título em aberto entre os marcados.'}</div>`;
+  const lista=()=>{ if(!ls.length) return `<div class="warnbox" style="margin:8px 0">${porDia?`Nenhum título em aberto com vencimento ${F.bbVenc?'até '+dataBR(ate):(dia===ate?'em '+dataBR(dia):'de '+dataBR(dia)+' a '+dataBR(ate))}. Escolha outro período${F.bbVenc?'':' ou marque "Incluir também os vencidos"'}.`:'Nenhum título em aberto entre os marcados.'}</div>`;
     return `<div class="tscroll" style="max-height:48vh;overflow:auto"><table class="t bb-t"><thead><tr><th style="width:34px"><input type="checkbox" id="bbTodos" aria-label="Marcar todos" ${marc.size===ls.length?'checked':''}></th><th>Vencimento</th><th>${P?'Fornecedor':'Cliente'} / descrição</th><th class="r">Valor do título</th><th class="r">Valor ${P?'pago':'recebido'}</th><th>Forma</th><th>Conta bancária</th></tr></thead><tbody>
       ${ls.map(l=>`<tr class="${marc.has(l.id)?'':'off'}${difer(l)?' dif':''}"><td><input type="checkbox" data-bb="${l.id}" aria-label="Incluir ${esc(nomePessoa(l)||'')}" ${marc.has(l.id)?'checked':''}></td>
         <td class="num">${dataBR(l.vencimento)}${stL(l)==='vencido'?' <span class="pill vencido">vencido</span>':''}</td>
@@ -1470,8 +1471,10 @@ function formBaixaBloco(t, ids, dia){
   const resumo=()=>{ const sel=ls.filter(l=>marc.has(l.id)), tot=sel.reduce((a,l)=>a+(val[l.id]??l.valor),0), nd=sel.filter(difer).length;
     return `<b>${sel.length}</b> de ${ls.length} título(s) · total ${P?'a pagar':'a receber'} <b>${brl(tot)}</b>${nd?` · <b>${nd}</b> com forma ou conta diferente do padrão`:''}`; };
   const corpo=`<div class="fields">
-      ${porDia?`<div class="f s2"><label for="bbDia">Vencimento</label><input id="bbDia" type="date" value="${dia}"></div>
-      <div class="f s4" style="align-self:end"><label class="check"><input type="checkbox" id="bbVencidos" ${F.bbVenc?'checked':''}> Incluir também os vencidos antes desta data</label></div>`:''}
+      ${porDia?`<div class="f s2"><label for="bbDia">Vencimento de</label><input id="bbDia" type="date" value="${dia}"></div>
+      <div class="f s2"><label for="bbAte">até</label><input id="bbAte" type="date" value="${ate}"></div>
+      <div class="f s2" style="align-self:end"><div class="row" style="gap:6px"><button type="button" class="btn sm" data-m="bbSoDia">Só o dia</button><button type="button" class="btn sm" data-m="bbMes">Mês inteiro</button></div></div>
+      <div class="f s6" style="margin-top:-4px"><label class="check"><input type="checkbox" id="bbVencidos" ${F.bbVenc?'checked':''}> Incluir também os vencidos antes desse período</label></div>`:''}
       <div class="f s2"><label for="bbData">Data do ${P?'pagamento':'recebimento'}</label><input id="bbData" type="date" value="${hoje()}"></div>
       <div class="f s2"><label for="bbForma">Forma padrão</label><select id="bbForma"><option value="">Manter a de cada título</option>${formaOptions('',t)}</select></div>
       <div class="f s2"><label for="bbBanco">Conta bancária padrão</label><select id="bbBanco">${bancoOptions(pb)}</select></div>
@@ -1483,7 +1486,7 @@ function formBaixaBloco(t, ids, dia){
   abrirModal(P?'Baixa em bloco · contas a pagar':'Recebimento em bloco · contas a receber', corpo,
     `<span></span><div class="row"><button class="btn" data-m="fechar">Cancelar</button><button class="btn primary" data-m="ok">${P?'Confirmar pagamentos':'Confirmar recebimentos'}</button></div>`, {
     change:el=>{
-      if(el.id==='bbDia'||el.id==='bbVencidos'){ if(el.id==='bbDia') dia=el.value||hoje(); else F.bbVenc=el.checked; ls=titulos(); marc.clear(); ls.forEach(l=>marc.add(l.id)); redesenha(); return; }
+      if(el.id==='bbDia'||el.id==='bbAte'||el.id==='bbVencidos'){ if(el.id==='bbDia'){ dia=el.value||hoje(); if(ate<dia){ ate=dia; sh().querySelector('#bbAte').value=ate; } } else if(el.id==='bbAte'){ ate=el.value||dia; if(ate<dia){ dia=ate; sh().querySelector('#bbDia').value=dia; } } else F.bbVenc=el.checked; ls=titulos(); marc.clear(); ls.forEach(l=>marc.add(l.id)); redesenha(); return; }
       if(el.id==='bbForma'){ pf=el.value; redesenha(); return; }
       if(el.id==='bbBanco'){ pb=el.value; redesenha(); return; }
       if(el.id==='bbTodos'){ marc.clear(); if(el.checked) ls.forEach(l=>marc.add(l.id)); redesenha(); return; }
@@ -1492,6 +1495,8 @@ function formBaixaBloco(t, ids, dia){
       if(el.dataset.bk){ if(el.value===pb) delete bc[el.dataset.bk]; else bc[el.dataset.bk]=el.value; redesenha(); return; }
       if(el.dataset.bv){ val[el.dataset.bv]=Math.round(parseNum(el.value)*100)/100; el.value=fmoney(val[el.dataset.bv]); sh().querySelector('#bbRes').innerHTML=resumo(); } },
     bbPadrao:b=>{ delete fo[b.dataset.id]; delete bc[b.dataset.id]; redesenha(); },
+    bbSoDia:()=>{ ate=dia; sh().querySelector('#bbAte').value=ate; ls=titulos(); marc.clear(); ls.forEach(l=>marc.add(l.id)); redesenha(); },
+    bbMes:()=>{ dia=dia.slice(0,8)+'01'; ate=fimMes(dia); sh().querySelector('#bbDia').value=dia; sh().querySelector('#bbAte').value=ate; ls=titulos(); marc.clear(); ls.forEach(l=>marc.add(l.id)); redesenha(); },
     ok:()=>{ const sel=ls.filter(l=>marc.has(l.id)); if(!sel.length){ toast('Marque pelo menos um título.'); return; }
       if(sel.some(l=>!((val[l.id]??l.valor)>0))){ toast('Há título com valor zerado. Corrija ou desmarque.'); return; }
       const data=mv('bbData')||hoje();
